@@ -77,7 +77,7 @@ repos:
     hooks:
       - id: pytest
         name: Run tests with coverage
-        entry: pytest tests/ -v --cov=src --cov-report=term-missing --cov-fail-under=70
+        entry: pytest tests/ -v --cov=src --cov-report=term-missing --cov-fail-under=90
         language: system
         pass_filenames: false
         stages: [pre-push]

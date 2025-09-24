@@ -11,23 +11,24 @@ requires-python = ">=3.10"
 authors = [{ name = "Your Name", email = "you@example.com" }]
 license = { text = "MIT" }
 dependencies = [
-  "PySide6==6.6.0",
+  "PySide6==6.9.2",
+  "pdf2foundry @ file:///Users/martin.papy/Development/pdf2foundry",
 ]
 
 # Keep PyInstaller as a build extra (not required at runtime)
 [project.optional-dependencies]
-build = ["PyInstaller==6.3.0"]
 dev = [
-  "pytest>=8.0.0",
-  "pytest-cov>=4.0.0",
-  "mypy>=1.5.0",
-  "ruff>=0.5.0",
-  "black>=24.0.0",
-  "pre-commit>=3.0.0",
-  "codespell>=2.3.0",
-  "mdformat>=0.7.0",
-  "mdformat-gfm>=0.3.0",
-  "mdformat-frontmatter>=2.0.0",
+  "PyInstaller==6.16.0",
+  "pytest>=8.4.2",
+  "pytest-cov>=7.0.0",
+  "mypy>=1.18.2",
+  "ruff>=0.13.1",
+  "black>=25.9.0",
+  "pre-commit>=4.3.0",
+  "codespell>=2.4.1",
+  "mdformat>=0.7.22",
+  "mdformat-gfm>=0.4.1",
+  "mdformat-frontmatter>=2.0.8",
 ]
 
 [project.scripts]
@@ -41,7 +42,7 @@ where = ["src"]
 include = ["gui*", "core*"]
 
 [tool.pytest.ini_options]
-addopts = "-ra -q"
+addopts = "-v --cov=src --cov-report=term-missing --cov-fail-under=90"
 testpaths = ["tests"]
 log_cli = true
 log_cli_level = "INFO"

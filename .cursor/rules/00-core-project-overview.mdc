@@ -1,0 +1,121 @@
+---
+alwaysApply: true
+---
+# PDF2Foundry GUI – Core Project Overview
+
+This project provides a **cross-platform PySide6 GUI** for the pdf2foundry CLI tool, making PDF-to-Foundry VTT conversion accessible to non-technical users while preserving full advanced functionality for power users.
+
+## Scope & Goals
+
+- **Desktop GUI wrapper** for pdf2foundry CLI with full feature parity
+- **Drag-and-drop interface** for casual users with minimal configuration
+- **Advanced settings panels** exposing all CLI options for power users
+- **Cross-platform support** (Windows, macOS, Linux) from day one
+- **Real-time progress tracking** with logs and status updates
+- **Preset management** for saving/loading common configurations
+- **Utility features** (self-update, log export, issue reporting)
+
+## Target Users
+
+### Casual GMs/Players
+- Limited technical knowledge
+- Want quick PDF conversion without CLI complexity
+- Need simple drag-drop → convert workflow
+
+### Advanced Power Users  
+- Familiar with CLI or scripting
+- Need fine-grained control over conversion options
+- Want preset management and advanced logging
+
+## Architecture
+
+### Technical Stack
+- **Framework**: PySide6 (Qt for Python)
+- **Backend Integration**: Direct Python function calls (not subprocess)
+- **Threading**: Worker threads for conversion to prevent UI blocking
+- **Packaging**: PyInstaller/Briefcase for cross-platform distribution
+
+### GUI Structure
+- **Main Window**: Minimalist drag-drop interface with progressive disclosure
+- **Settings Window**: Tabbed advanced options with full CLI parity
+- **Progress/Logs**: Real-time feedback with collapsible console
+- **Presets**: Local JSON storage for configuration management
+
+## Core Features
+
+### Basic Mode (Main Window)
+- Drag & Drop PDF input zone
+- File browser fallback
+- Output directory selection
+- Large "Convert" button
+- Progress bar with real-time logs
+- "Open Output Folder" convenience button
+
+### Advanced Mode (Settings)
+- **General Tab**: Module metadata, deterministic IDs, pack naming
+- **Conversion Tab**: Tables handling, OCR, picture descriptions, TOC
+- **Performance Tab**: Page ranges, worker processes, column reflow
+- **Caching Tab**: Docling JSON cache management
+- **Output Tab**: Compilation options, verbosity levels
+- **Debug Tab**: Advanced logging, temp file preservation
+
+### Utility Features
+- **Self-Update Check**: GitHub Releases API integration
+- **Log Export**: Save session logs to file
+- **Report Issue**: Direct GitHub Issues link
+- **Preset Management**: Save/Load/Delete configuration profiles
+
+## CLI Integration & Validation
+
+### Full CLI Parity
+All pdf2foundry CLI options mapped to GUI controls:
+- Required: `<PDF_FILE>`, `--mod-id`, `--mod-title`
+- Optional: All flags from module options, content processing, performance, caching, output
+- See [CLI Control Map](mdc:docs/gui-control-map.md) for complete mapping
+
+### Input Validation
+- **mod-id**: Lowercase, dash-separated slug validation
+- **mod-title**: Required, non-empty
+- **pages**: Regex pattern for ranges (e.g., "1,5-10,15")
+- **workers**: 1 to CPU core count
+- **paths**: File existence and write permissions
+
+### Command Synthesis
+GUI generates equivalent CLI command shown in logs pane for transparency and debugging.
+
+## UI/UX Principles
+
+### Design Philosophy
+- **Minimalist default view** → essentials only initially
+- **Progressive disclosure** → advanced options hidden until needed
+- **Modern desktop style** → flat, clean, OS-consistent
+- **Light branding** → subtle logo/icon, native appearance
+
+### Error Handling
+- Graceful error popups with actionable messages
+- Input validation with inline feedback
+- Dependency warnings (Tesseract for OCR, Node for pack compilation)
+- Clear success/failure notifications
+
+## Development Standards
+
+### Code Organization
+- **Typed dataclasses** for all configuration ([Form Specs](mdc:docs/gui-form-specs.md))
+- **Enum-based dropdowns** for consistent options
+- **JSON Schema generation** for validation
+- **Modular widget architecture** for maintainability
+
+### Quality Requirements
+- **Threading safety**: All backend calls in worker threads
+- **Cross-platform compatibility**: Test on Windows, macOS, Linux
+- **Performance**: Handle large PDFs (>200 pages) without UI freezing
+- **Accessibility**: Basic Qt accessibility support
+
+## Success Metrics
+
+- **Usability**: 80% of non-technical users complete conversion without documentation
+- **Feature Parity**: All CLI options accessible in advanced mode
+- **Stability**: No crashes during large file processing
+- **Adoption**: 50%+ users utilize utility features (logs, updates) within first release
+
+Refer to: [GUI PRD](mdc:docs/gui-prd.md), [Control Map](mdc:docs/gui-control-map.md), [Form Specs](mdc:docs/gui-form-specs.md), [Wireframes](mdc:docs/gui-wireframes.md)

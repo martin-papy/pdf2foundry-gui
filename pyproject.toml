@@ -1,0 +1,138 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyside6-app"
+version = "0.1.0"
+description = "PySide6 GUI application"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Your Name", email = "you@example.com" }]
+license = { text = "MIT" }
+dependencies = [
+  "PySide6==6.6.0",
+]
+
+# Keep PyInstaller as a build extra (not required at runtime)
+[project.optional-dependencies]
+build = ["PyInstaller==6.3.0"]
+dev = [
+  "pytest>=8.0.0",
+  "pytest-cov>=4.0.0",
+  "mypy>=1.5.0",
+  "ruff>=0.5.0",
+  "black>=24.0.0",
+  "pre-commit>=3.0.0",
+  "codespell>=2.3.0",
+  "mdformat>=0.7.0",
+  "mdformat-gfm>=0.3.0",
+  "mdformat-frontmatter>=2.0.0",
+]
+
+[project.scripts]
+pyside6-app = "gui.main:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["gui*", "core*"]
+
+[tool.pytest.ini_options]
+addopts = "-ra -q"
+testpaths = ["tests"]
+log_cli = true
+log_cli_level = "INFO"
+log_cli_format = "%(asctime)s [%(levelname)8s] %(name)s: %(message)s"
+log_cli_date_format = "%Y-%m-%d %H:%M:%S"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+    "ignore::UserWarning",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "gui: marks tests that require GUI functionality",
+    "integration: marks tests as integration tests",
+]
+
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    "tests/*",
+    "*/test_*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+    "app.exec\\(\\)",
+    "return app.exec\\(\\)",
+    "raise SystemExit\\(",
+]
+
+[tool.black]
+line-length = 125
+target-version = ['py310']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.ruff]
+line-length = 125
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+  "E","F","I","B","UP","C4","SIM","RUF"
+]
+ignore = ["ISC001"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["gui", "core"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_unused_configs = true
+pretty = true
+exclude = [
+  "^tests/.*$"
+]
+# Performance optimizations for local development
+sqlite_cache = true
+cache_fine_grained = true
+incremental = true
+disallow_any_generics = false
+follow_imports = "normal"
+local_partial_types = true
+skip_version_check = true
+show_error_context = false
+
+[[tool.mypy.overrides]]
+module = [
+  "PySide6.*",
+]
+ignore_missing_imports = true

@@ -1,0 +1,5 @@
+dist/
+build/
+.venv/
+src/pyside6_app.egg-info/
+.cursor/

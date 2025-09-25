@@ -18,5 +18,3 @@ description: Error handling and logging policy
 ## Exit behavior
 
 - Return non-zero exit code on unrecoverable errors; otherwise continue with fallbacks.
-
-See: [architecture_and_flow.md](mdc:docs/architecture_and_flow.md), [technical_feasibility.md](mdc:docs/technical_feasibility.md)

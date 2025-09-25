@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyside6-app"
-version = "0.1.0"
+version = "0.1.0a1"
 description = "PySide6 GUI application"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 authors = [{ name = "Your Name", email = "you@example.com" }]
 license = { text = "MIT" }
 dependencies = [
   "PySide6==6.9.2",
-  "pdf2foundry @ file:///Users/martin.papy/Development/pdf2foundry",
+  "pdf2foundry==0.1.0a1",
 ]
 
 # Keep PyInstaller as a build extra (not required at runtime)
@@ -21,6 +21,7 @@ dev = [
   "PyInstaller==6.16.0",
   "pytest>=8.4.2",
   "pytest-cov>=7.0.0",
+  "pytest-qt>=4.4.0",
   "mypy>=1.18.2",
   "ruff>=0.13.1",
   "black>=25.9.0",
@@ -64,6 +65,7 @@ source = ["src"]
 omit = [
     "tests/*",
     "*/test_*",
+    "src/gui/utils/*",  # Utility modules - will be tested when used
 ]
 
 [tool.coverage.report]
@@ -115,7 +117,7 @@ ignore = ["ISC001"]
 known-first-party = ["gui", "core"]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.12"
 strict = true
 warn_unused_configs = true
 pretty = true

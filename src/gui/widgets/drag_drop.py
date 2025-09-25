@@ -1,12 +1,17 @@
 """
-Custom widgets for the PDF2Foundry GUI application.
+Drag-and-drop widget for PDF file selection.
 """
 
 from pathlib import Path
 
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent, QDropEvent, QKeyEvent
-from PySide6.QtWidgets import QLabel, QSizePolicy, QWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QLabel,
+    QSizePolicy,
+    QWidget,
+)
 
 from core.pdf_utils import extract_local_paths_from_mimedata, validate_single_pdf_source
 
@@ -22,6 +27,8 @@ class DragDropLabel(QLabel):
     # Signals
     fileAccepted = Signal(str)  # Emitted with file path when a valid PDF is dropped
     fileRejected = Signal(str)  # Emitted with error message when invalid file is dropped
+    pdfSelected = Signal(str)  # Emitted when a PDF is successfully selected (same as fileAccepted)
+    pdfCleared = Signal()  # Emitted when the selection is cleared
 
     # Visual states
     STATE_NORMAL = "normal"
@@ -31,8 +38,14 @@ class DragDropLabel(QLabel):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
+        # State tracking
+        self._selected_pdf_path: str = ""
+
         # Enable drag and drop
         self.setAcceptDrops(True)
+
+        # Set object name for styling
+        self.setObjectName("dragZone")
 
         # Set up initial appearance
         self._current_state = self.STATE_NORMAL
@@ -43,7 +56,8 @@ class DragDropLabel(QLabel):
 
         # Set accessibility properties
         self.setAccessibleName("PDF file drop zone")
-        self.setAccessibleDescription("Drag and drop a PDF file here, or use the Browse button")
+        self.setAccessibleDescription("Drop a PDF file here. Only .pdf files are accepted.")
+        self.setToolTip("Drop a PDF file here. Only .pdf files are accepted.")
 
     def _setup_appearance(self) -> None:
         """Set up the initial appearance and styling."""
@@ -62,57 +76,92 @@ class DragDropLabel(QLabel):
     def _update_appearance(self) -> None:
         """Update appearance based on current state."""
         if self._current_state == self.STATE_NORMAL:
-            self.setStyleSheet(
-                """
-                QLabel {
-                    border: 2px dashed #cccccc;
-                    border-radius: 8px;
-                    background-color: #fafafa;
-                    color: #666666;
-                    font-size: 16px;
-                    padding: 20px;
-                }
-            """
-            )
-            self.setText("📂 Drag & Drop your PDF here\n\nOR\n\nUse the Browse button below")
+            # Use dynamic properties for CSS styling
+            self.setProperty("drag-hover", False)
+            self.setProperty("drag-reject", False)
+
+            # Set base styling with palette-aware colors
+            self.setStyleSheet(self._get_base_stylesheet())
+            self.setText("📄 Drop a PDF or use Browse\n\nSupported: .pdf files only")
 
         elif self._current_state == self.STATE_HOVER:
-            self.setStyleSheet(
-                """
-                QLabel {
-                    border: 2px dashed #0078d4;
-                    border-radius: 8px;
-                    background-color: #f0f8ff;
-                    color: #0078d4;
-                    font-size: 16px;
-                    font-weight: bold;
-                    padding: 20px;
-                }
-            """
-            )
-            self.setText("📂 Drop your PDF file here")
+            # Set hover state properties
+            self.setProperty("drag-hover", True)
+            self.setProperty("drag-reject", False)
+
+            self.setStyleSheet(self._get_hover_stylesheet())
+            self.setText("📄 Drop your PDF file here")
 
         elif self._current_state == self.STATE_REJECT:
-            self.setStyleSheet(
-                """
-                QLabel {
-                    border: 2px dashed #d13438;
-                    border-radius: 8px;
-                    background-color: #fdf2f2;
-                    color: #d13438;
-                    font-size: 16px;
-                    font-weight: bold;
-                    padding: 20px;
-                }
-            """
-            )
+            # Set reject state properties
+            self.setProperty("drag-hover", False)
+            self.setProperty("drag-reject", True)
+
+            self.setStyleSheet(self._get_reject_stylesheet())
             # Text will be set by the rejection handler
 
-        # Update cursor
+        # Update cursor with better feedback
+        self._update_cursor()
+
+        # Force style refresh
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    def _get_base_stylesheet(self) -> str:
+        """Get base stylesheet with palette-aware colors."""
+        return """
+            QLabel#dragZone {
+                border: 2px dashed palette(mid);
+                border-radius: 12px;
+                background-color: rgba(128, 128, 128, 20);
+                color: palette(window-text);
+                font-size: 14px;
+                font-weight: normal;
+                padding: 24px;
+                min-height: 120px;
+            }
+        """
+
+    def _get_hover_stylesheet(self) -> str:
+        """Get hover stylesheet with accent colors."""
+        return """
+            QLabel#dragZone {
+                border: 2px dashed palette(highlight);
+                border-radius: 12px;
+                background-color: rgba(0, 120, 212, 30);
+                color: palette(highlighted-text);
+                font-size: 14px;
+                font-weight: bold;
+                padding: 24px;
+                min-height: 120px;
+            }
+        """
+
+    def _get_reject_stylesheet(self) -> str:
+        """Get reject stylesheet with error colors."""
+        return """
+            QLabel#dragZone {
+                border: 2px dashed #d32f2f;
+                border-radius: 12px;
+                background-color: rgba(211, 47, 47, 20);
+                color: #d32f2f;
+                font-size: 14px;
+                font-weight: bold;
+                padding: 24px;
+                min-height: 120px;
+            }
+        """
+
+    def _update_cursor(self) -> None:
+        """Update cursor based on current state."""
         if self._current_state == self.STATE_HOVER:
-            self.setCursor(Qt.CursorShape.PointingHandCursor)
+            QApplication.setOverrideCursor(Qt.CursorShape.DragCopyCursor)
+        elif self._current_state == self.STATE_REJECT:
+            QApplication.setOverrideCursor(Qt.CursorShape.ForbiddenCursor)
         else:
-            self.setCursor(Qt.CursorShape.ArrowCursor)
+            # Restore default cursor
+            while QApplication.overrideCursor():
+                QApplication.restoreOverrideCursor()
 
     def _set_state(self, state: str) -> None:
         """Change the visual state and update appearance."""
@@ -175,10 +224,17 @@ class DragDropLabel(QLabel):
             valid_path, error_message = validate_single_pdf_source(paths)
 
             if valid_path:
-                # Success - emit signal with the file path
+                # Success - update state and emit signals
+                self._selected_pdf_path = str(valid_path)
                 self.fileAccepted.emit(str(valid_path))
+                self.pdfSelected.emit(str(valid_path))
+
                 self._set_state(self.STATE_NORMAL)
                 self.setText(f"✅ PDF Selected:\n{valid_path.name}\n\nReady to convert!")
+
+                # Update accessibility
+                self.setAccessibleDescription(f"PDF selected: {valid_path.name}")
+
                 event.acceptProposedAction()
             else:
                 # Validation failed - show error
@@ -189,6 +245,10 @@ class DragDropLabel(QLabel):
             # Unexpected error
             self._handle_rejection(f"Error processing file: {e!s}")
             event.ignore()
+        finally:
+            # Always restore cursor after drop
+            while QApplication.overrideCursor():
+                QApplication.restoreOverrideCursor()
 
     def _handle_rejection(self, error_message: str) -> None:
         """Handle file rejection with visual feedback."""
@@ -211,17 +271,43 @@ class DragDropLabel(QLabel):
 
     def reset(self) -> None:
         """Reset the widget to its initial state."""
-        self._set_state(self.STATE_NORMAL)
+        self.clearSelectedPdf()
 
     def set_file_selected(self, file_path: str) -> None:
         """Update the widget to show a selected file."""
         path = Path(file_path)
+        self._selected_pdf_path = file_path
         self._set_state(self.STATE_NORMAL)
         self.setText(f"✅ PDF Selected:\n{path.name}\n\nReady to convert!")
+        self.setAccessibleDescription(f"PDF selected: {path.name}")
 
     def set_error(self, error_message: str) -> None:
         """Show an error state with custom message."""
         self._handle_rejection(error_message)
+
+    # Integration API methods
+
+    def selectedPdfPath(self) -> str:
+        """
+        Get the currently selected PDF path.
+
+        Returns:
+            The absolute path to the selected PDF file, or empty string if none selected.
+        """
+        return self._selected_pdf_path
+
+    def clearSelectedPdf(self) -> None:
+        """Clear the current PDF selection and reset to initial state."""
+        if self._selected_pdf_path:
+            self._selected_pdf_path = ""
+            self.pdfCleared.emit()
+
+        self._set_state(self.STATE_NORMAL)
+        self.setAccessibleDescription("Drop a PDF file here. Only .pdf files are accepted.")
+
+        # Restore cursor if needed
+        while QApplication.overrideCursor():
+            QApplication.restoreOverrideCursor()
 
     # Size hints for proper layout
 

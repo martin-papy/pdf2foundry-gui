@@ -9,7 +9,7 @@ from PySide6.QtCore import QMimeData, Qt, QUrl
 from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent, QDropEvent
 from PySide6.QtWidgets import QApplication
 
-from gui.widgets import DragDropLabel
+from gui.widgets.drag_drop import DragDropLabel
 
 
 @pytest.fixture
@@ -35,13 +35,12 @@ class TestDragDropLabelInitialization:
         assert widget.acceptDrops() is True
         assert widget._current_state == DragDropLabel.STATE_NORMAL
         assert widget.accessibleName() == "PDF file drop zone"
-        assert "Drag and drop a PDF file here" in widget.accessibleDescription()
+        assert "Drop a PDF file here" in widget.accessibleDescription()
 
     def test_initial_appearance(self, widget):
         """Test initial visual appearance."""
-        assert "📂 Drag & Drop your PDF here" in widget.text()
-        assert "OR" in widget.text()
-        assert "Browse button" in widget.text()
+        assert "📄 Drop a PDF or use Browse" in widget.text()
+        assert "Supported: .pdf files only" in widget.text()
 
     def test_size_hints(self, widget):
         """Test size hints are reasonable."""
@@ -61,20 +60,20 @@ class TestDragDropLabelStates:
         """Test setting normal state."""
         widget._set_state(DragDropLabel.STATE_NORMAL)
         assert widget._current_state == DragDropLabel.STATE_NORMAL
-        assert "#cccccc" in widget.styleSheet()  # Normal border color
+        assert "palette(mid)" in widget.styleSheet()  # Palette-aware border color
 
     def test_set_state_hover(self, widget):
         """Test setting hover state."""
         widget._set_state(DragDropLabel.STATE_HOVER)
         assert widget._current_state == DragDropLabel.STATE_HOVER
-        assert "#0078d4" in widget.styleSheet()  # Hover border color
+        assert "palette(highlight)" in widget.styleSheet()  # Palette-aware hover border
         assert "Drop your PDF file here" in widget.text()
 
     def test_set_state_reject(self, widget):
         """Test setting reject state."""
         widget._set_state(DragDropLabel.STATE_REJECT)
         assert widget._current_state == DragDropLabel.STATE_REJECT
-        assert "#d13438" in widget.styleSheet()  # Reject border color
+        assert "#d32f2f" in widget.styleSheet()  # Error border color
 
     def test_state_transitions(self, widget):
         """Test state transitions update appearance."""
@@ -101,8 +100,8 @@ class TestDragDropLabelDragEvents:
 
         # Mock the validation functions to return valid result
         with (
-            patch("gui.widgets.extract_local_paths_from_mimedata") as mock_extract,
-            patch("gui.widgets.validate_single_pdf_source") as mock_validate,
+            patch("gui.widgets.drag_drop.extract_local_paths_from_mimedata") as mock_extract,
+            patch("gui.widgets.drag_drop.validate_single_pdf_source") as mock_validate,
         ):
             mock_extract.return_value = [pdf_file]
             mock_validate.return_value = (pdf_file, None)
@@ -129,8 +128,8 @@ class TestDragDropLabelDragEvents:
 
         # Mock the validation functions to return invalid result
         with (
-            patch("gui.widgets.extract_local_paths_from_mimedata") as mock_extract,
-            patch("gui.widgets.validate_single_pdf_source") as mock_validate,
+            patch("gui.widgets.drag_drop.extract_local_paths_from_mimedata") as mock_extract,
+            patch("gui.widgets.drag_drop.validate_single_pdf_source") as mock_validate,
         ):
             mock_extract.return_value = [txt_file]
             mock_validate.return_value = (None, "File is not a PDF (detected: .txt). Please select a PDF file.")
@@ -211,8 +210,8 @@ class TestDragDropLabelDropEvents:
 
         # Mock the validation functions
         with (
-            patch("gui.widgets.extract_local_paths_from_mimedata") as mock_extract,
-            patch("gui.widgets.validate_single_pdf_source") as mock_validate,
+            patch("gui.widgets.drag_drop.extract_local_paths_from_mimedata") as mock_extract,
+            patch("gui.widgets.drag_drop.validate_single_pdf_source") as mock_validate,
         ):
             mock_extract.return_value = [pdf_file]
             mock_validate.return_value = (pdf_file, None)
@@ -246,8 +245,8 @@ class TestDragDropLabelDropEvents:
 
         # Mock the validation functions
         with (
-            patch("gui.widgets.extract_local_paths_from_mimedata") as mock_extract,
-            patch("gui.widgets.validate_single_pdf_source") as mock_validate,
+            patch("gui.widgets.drag_drop.extract_local_paths_from_mimedata") as mock_extract,
+            patch("gui.widgets.drag_drop.validate_single_pdf_source") as mock_validate,
         ):
             mock_extract.return_value = [txt_file]
             mock_validate.return_value = (None, "File is not a PDF")
@@ -283,8 +282,8 @@ class TestDragDropLabelDropEvents:
 
         # Mock the validation functions
         with (
-            patch("gui.widgets.extract_local_paths_from_mimedata") as mock_extract,
-            patch("gui.widgets.validate_single_pdf_source") as mock_validate,
+            patch("gui.widgets.drag_drop.extract_local_paths_from_mimedata") as mock_extract,
+            patch("gui.widgets.drag_drop.validate_single_pdf_source") as mock_validate,
         ):
             mock_extract.return_value = [pdf1, pdf2]
             mock_validate.return_value = (None, "Multiple files provided (2). Please select only one PDF file.")
@@ -311,7 +310,7 @@ class TestDragDropLabelDropEvents:
     def test_drop_exception_handling(self, widget):
         """Test drop event exception handling."""
         # Mock extract function to raise exception
-        with patch("gui.widgets.extract_local_paths_from_mimedata", side_effect=Exception("Test error")):
+        with patch("gui.widgets.drag_drop.extract_local_paths_from_mimedata", side_effect=Exception("Test error")):
             mime_data = QMimeData()
             mime_data.setUrls([QUrl("file:///test.pdf")])
 
@@ -382,7 +381,7 @@ class TestDragDropLabelAccessibility:
 
         # Test accessibility properties
         assert widget.accessibleName() == "PDF file drop zone"
-        assert "Drag and drop a PDF file here" in widget.accessibleDescription()
+        assert "Drop a PDF file here" in widget.accessibleDescription()
 
     def test_keyboard_events(self, widget):
         """Test keyboard event handling."""
@@ -402,3 +401,89 @@ class TestDragDropLabelAccessibility:
         # Test other keys (should call parent)
         other_event = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_A, Qt.KeyboardModifier.NoModifier)
         widget.keyPressEvent(other_event)
+
+
+class TestDragDropLabelEnhancements:
+    """Test enhanced functionality and integration API."""
+
+    def test_object_name_set(self, widget):
+        """Test that object name is set for CSS styling."""
+        assert widget.objectName() == "dragZone"
+
+    def test_new_signals_exist(self, widget):
+        """Test that new signals are available."""
+        # Test signal existence
+        assert hasattr(widget, "pdfSelected")
+        assert hasattr(widget, "pdfCleared")
+
+    def test_selected_pdf_path_tracking(self, widget, tmp_path):
+        """Test PDF path tracking functionality."""
+        # Initially no selection
+        assert widget.selectedPdfPath() == ""
+
+        # Set a file selection
+        test_pdf = tmp_path / "test.pdf"
+        test_pdf.write_bytes(b"%PDF-1.4\ntest content")
+
+        widget.set_file_selected(str(test_pdf))
+        assert widget.selectedPdfPath() == str(test_pdf)
+
+        # Clear selection
+        widget.clearSelectedPdf()
+        assert widget.selectedPdfPath() == ""
+
+    def test_pdf_cleared_signal_emission(self, widget):
+        """Test that pdfCleared signal is emitted correctly."""
+        # Set initial selection
+        widget._selected_pdf_path = "/some/path.pdf"
+
+        # Connect signal to capture emissions
+        pdf_cleared_calls = []
+        widget.pdfCleared.connect(lambda: pdf_cleared_calls.append(True))
+
+        # Clear selection
+        widget.clearSelectedPdf()
+
+        # Verify signal was emitted
+        assert len(pdf_cleared_calls) == 1
+        assert widget.selectedPdfPath() == ""
+
+    def test_enhanced_styling_methods(self, widget):
+        """Test that enhanced styling methods exist."""
+        # Test that styling methods exist
+        assert hasattr(widget, "_get_base_stylesheet")
+        assert hasattr(widget, "_get_hover_stylesheet")
+        assert hasattr(widget, "_get_reject_stylesheet")
+        assert hasattr(widget, "_update_cursor")
+
+        # Test that they return strings
+        assert isinstance(widget._get_base_stylesheet(), str)
+        assert isinstance(widget._get_hover_stylesheet(), str)
+        assert isinstance(widget._get_reject_stylesheet(), str)
+
+    def test_tooltip_set(self, widget):
+        """Test that tooltip is properly set."""
+        assert widget.toolTip() == "Drop a PDF file here. Only .pdf files are accepted."
+
+    def test_accessibility_updates_on_selection(self, widget, tmp_path):
+        """Test that accessibility description updates when file is selected."""
+        # Initial state
+        initial_desc = widget.accessibleDescription()
+        assert "Drop a PDF file here" in initial_desc
+
+        # Select a file
+        test_pdf = tmp_path / "test_document.pdf"
+        test_pdf.write_bytes(b"%PDF-1.4\ntest content")
+
+        widget.set_file_selected(str(test_pdf))
+
+        # Check that description was updated
+        updated_desc = widget.accessibleDescription()
+        assert "test_document.pdf" in updated_desc
+
+        # Clear selection
+        widget.clearSelectedPdf()
+
+        # Check that description was reset
+        reset_desc = widget.accessibleDescription()
+        assert "Drop a PDF file here" in reset_desc

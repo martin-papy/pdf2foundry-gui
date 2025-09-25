@@ -18,11 +18,13 @@ This project provides a **cross-platform PySide6 GUI** for the pdf2foundry CLI t
 ## Target Users
 
 ### Casual GMs/Players
+
 - Limited technical knowledge
 - Want quick PDF conversion without CLI complexity
 - Need simple drag-drop → convert workflow
 
 ### Advanced Power Users  
+
 - Familiar with CLI or scripting
 - Need fine-grained control over conversion options
 - Want preset management and advanced logging
@@ -30,12 +32,14 @@ This project provides a **cross-platform PySide6 GUI** for the pdf2foundry CLI t
 ## Architecture
 
 ### Technical Stack
+
 - **Framework**: PySide6 (Qt for Python)
 - **Backend Integration**: Direct Python function calls (not subprocess)
 - **Threading**: Worker threads for conversion to prevent UI blocking
 - **Packaging**: PyInstaller/Briefcase for cross-platform distribution
 
 ### GUI Structure
+
 - **Main Window**: Minimalist drag-drop interface with progressive disclosure
 - **Settings Window**: Tabbed advanced options with full CLI parity
 - **Progress/Logs**: Real-time feedback with collapsible console
@@ -44,6 +48,7 @@ This project provides a **cross-platform PySide6 GUI** for the pdf2foundry CLI t
 ## Core Features
 
 ### Basic Mode (Main Window)
+
 - Drag & Drop PDF input zone
 - File browser fallback
 - Output directory selection
@@ -52,6 +57,7 @@ This project provides a **cross-platform PySide6 GUI** for the pdf2foundry CLI t
 - "Open Output Folder" convenience button
 
 ### Advanced Mode (Settings)
+
 - **General Tab**: Module metadata, deterministic IDs, pack naming
 - **Conversion Tab**: Tables handling, OCR, picture descriptions, TOC
 - **Performance Tab**: Page ranges, worker processes, column reflow
@@ -60,6 +66,7 @@ This project provides a **cross-platform PySide6 GUI** for the pdf2foundry CLI t
 - **Debug Tab**: Advanced logging, temp file preservation
 
 ### Utility Features
+
 - **Self-Update Check**: GitHub Releases API integration
 - **Log Export**: Save session logs to file
 - **Report Issue**: Direct GitHub Issues link
@@ -68,12 +75,15 @@ This project provides a **cross-platform PySide6 GUI** for the pdf2foundry CLI t
 ## CLI Integration & Validation
 
 ### Full CLI Parity
+
 All pdf2foundry CLI options mapped to GUI controls:
+
 - Required: `<PDF_FILE>`, `--mod-id`, `--mod-title`
 - Optional: All flags from module options, content processing, performance, caching, output
 - See [CLI Control Map](mdc:docs/gui-control-map.md) for complete mapping
 
 ### Input Validation
+
 - **mod-id**: Lowercase, dash-separated slug validation
 - **mod-title**: Required, non-empty
 - **pages**: Regex pattern for ranges (e.g., "1,5-10,15")
@@ -81,17 +91,20 @@ All pdf2foundry CLI options mapped to GUI controls:
 - **paths**: File existence and write permissions
 
 ### Command Synthesis
+
 GUI generates equivalent CLI command shown in logs pane for transparency and debugging.
 
 ## UI/UX Principles
 
 ### Design Philosophy
+
 - **Minimalist default view** → essentials only initially
 - **Progressive disclosure** → advanced options hidden until needed
 - **Modern desktop style** → flat, clean, OS-consistent
 - **Light branding** → subtle logo/icon, native appearance
 
 ### Error Handling
+
 - Graceful error popups with actionable messages
 - Input validation with inline feedback
 - Dependency warnings (Tesseract for OCR, Node for pack compilation)
@@ -100,12 +113,14 @@ GUI generates equivalent CLI command shown in logs pane for transparency and deb
 ## Development Standards
 
 ### Code Organization
+
 - **Typed dataclasses** for all configuration ([Form Specs](mdc:docs/gui-form-specs.md))
 - **Enum-based dropdowns** for consistent options
 - **JSON Schema generation** for validation
 - **Modular widget architecture** for maintainability
 
 ### Quality Requirements
+
 - **Threading safety**: All backend calls in worker threads
 - **Cross-platform compatibility**: Test on Windows, macOS, Linux
 - **Performance**: Handle large PDFs (>200 pages) without UI freezing

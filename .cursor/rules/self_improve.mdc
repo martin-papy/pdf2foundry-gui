@@ -3,6 +3,7 @@ description: Guidelines for continuously improving Cursor rules based on emergin
 globs: **/*
 alwaysApply: true
 ---
+# Guidelines for continuously improving Cursor rules based on emerging code patterns and best practices
 
 - **Rule Improvement Triggers:**
   - New code patterns not covered by existing rules
@@ -32,6 +33,7 @@ alwaysApply: true
     - Implementation details have changed
 
 - **Example Pattern Recognition:**
+
   ```typescript
   // If you see repeated patterns like:
   const data = await prisma.user.findMany({
@@ -69,4 +71,5 @@ alwaysApply: true
   - Update references to external docs
   - Maintain links between related rules
   - Document breaking changes
+
 Follow [cursor_rules.mdc](mdc:.cursor/rules/cursor_rules.mdc) for proper rule formatting and structure.

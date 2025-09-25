@@ -291,7 +291,7 @@ class SettingsDialog(QDialog):
         self.author_edit = QLineEdit()
         self.author_edit.setPlaceholderText("Enter author name...")
         self.author_edit.setToolTip("Author metadata for module.json.")
-        self.author_edit._original_tooltip = "Author metadata for module.json."
+        self.author_edit._original_tooltip = "Author metadata for module.json."  # type: ignore[attr-defined]
         self.author_edit.textChanged.connect(self._mark_dirty)
         form_layout.addRow("&Author:", self.author_edit)
 
@@ -299,7 +299,7 @@ class SettingsDialog(QDialog):
         self.license_edit = QLineEdit()
         self.license_edit.setPlaceholderText("Enter license...")
         self.license_edit.setToolTip("License string for module.json.")
-        self.license_edit._original_tooltip = "License string for module.json."
+        self.license_edit._original_tooltip = "License string for module.json."  # type: ignore[attr-defined]
         self.license_edit.textChanged.connect(self._mark_dirty)
         form_layout.addRow("&License:", self.license_edit)
 
@@ -307,7 +307,7 @@ class SettingsDialog(QDialog):
         self.pack_name_edit = QLineEdit()
         self.pack_name_edit.setPlaceholderText("Will default to <mod-id>-journals")
         self.pack_name_edit.setToolTip("Compendium pack name.")
-        self.pack_name_edit._original_tooltip = "Compendium pack name."
+        self.pack_name_edit._original_tooltip = "Compendium pack name."  # type: ignore[attr-defined]
         self.pack_name_edit.textChanged.connect(self._mark_dirty)
         form_layout.addRow("&Pack Name:", self.pack_name_edit)
 
@@ -401,7 +401,7 @@ class SettingsDialog(QDialog):
             "Page list/ranges to process. Format: comma-separated list of " "page numbers and ranges (e.g., '1,5-10,15')."
         )
         self.pages_edit.setToolTip(tooltip_text)
-        self.pages_edit._original_tooltip = tooltip_text
+        self.pages_edit._original_tooltip = tooltip_text  # type: ignore[attr-defined]
         self.pages_edit.textChanged.connect(self._mark_dirty)
         form_layout.addRow("&Pages:", self.pages_edit)
 
@@ -465,7 +465,7 @@ class SettingsDialog(QDialog):
         self.log_file_edit.setPlaceholderText("Leave empty to log to console only")
         log_tooltip = "Optional path to write logs to a file. Leave empty to log to console only."
         self.log_file_edit.setToolTip(log_tooltip)
-        self.log_file_edit._original_tooltip = log_tooltip
+        self.log_file_edit._original_tooltip = log_tooltip  # type: ignore[attr-defined]
         self.log_file_edit.textChanged.connect(self._mark_dirty)
         self.browse_log_file_button = QToolButton()
         self.browse_log_file_button.setText("...")

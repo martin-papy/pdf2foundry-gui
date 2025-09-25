@@ -2,12 +2,13 @@
 Settings dialog for the PDF2Foundry GUI application.
 """
 
+import logging
 import os
 import re
 from pathlib import Path
-from typing import cast
+from typing import Any
 
-from PySide6.QtCore import QSettings, Qt
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -16,7 +17,10 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
+    QInputDialog,
+    QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QTabWidget,
@@ -25,7 +29,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.config_manager import ConfigManager
+from core.preset_manager import PresetError, PresetManager
 from gui.widgets.directory_selector import OutputDirectorySelector
+
+logger = logging.getLogger(__name__)
 
 
 class SettingsDialog(QDialog):
@@ -38,6 +46,10 @@ class SettingsDialog(QDialog):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+
+        # Configuration management
+        self._config_manager = ConfigManager()
+        self._preset_manager = PresetManager()
 
         # State tracking
         self._dirty = False
@@ -225,6 +237,10 @@ class SettingsDialog(QDialog):
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(12)
 
+        # Create preset controls
+        preset_widget = self._create_preset_controls()
+        layout.addWidget(preset_widget)
+
         # Create tab widget
         self.tab_widget = QTabWidget()
         self.tab_widget.setAccessibleName("Settings tabs")
@@ -275,7 +291,7 @@ class SettingsDialog(QDialog):
         self.author_edit = QLineEdit()
         self.author_edit.setPlaceholderText("Enter author name...")
         self.author_edit.setToolTip("Author metadata for module.json.")
-        self.author_edit._original_tooltip = "Author metadata for module.json."  # type: ignore[attr-defined]
+        self.author_edit._original_tooltip = "Author metadata for module.json."
         self.author_edit.textChanged.connect(self._mark_dirty)
         form_layout.addRow("&Author:", self.author_edit)
 
@@ -283,7 +299,7 @@ class SettingsDialog(QDialog):
         self.license_edit = QLineEdit()
         self.license_edit.setPlaceholderText("Enter license...")
         self.license_edit.setToolTip("License string for module.json.")
-        self.license_edit._original_tooltip = "License string for module.json."  # type: ignore[attr-defined]
+        self.license_edit._original_tooltip = "License string for module.json."
         self.license_edit.textChanged.connect(self._mark_dirty)
         form_layout.addRow("&License:", self.license_edit)
 
@@ -291,7 +307,7 @@ class SettingsDialog(QDialog):
         self.pack_name_edit = QLineEdit()
         self.pack_name_edit.setPlaceholderText("Will default to <mod-id>-journals")
         self.pack_name_edit.setToolTip("Compendium pack name.")
-        self.pack_name_edit._original_tooltip = "Compendium pack name."  # type: ignore[attr-defined]
+        self.pack_name_edit._original_tooltip = "Compendium pack name."
         self.pack_name_edit.textChanged.connect(self._mark_dirty)
         form_layout.addRow("&Pack Name:", self.pack_name_edit)
 
@@ -385,7 +401,7 @@ class SettingsDialog(QDialog):
             "Page list/ranges to process. Format: comma-separated list of " "page numbers and ranges (e.g., '1,5-10,15')."
         )
         self.pages_edit.setToolTip(tooltip_text)
-        self.pages_edit._original_tooltip = tooltip_text  # type: ignore[attr-defined]
+        self.pages_edit._original_tooltip = tooltip_text
         self.pages_edit.textChanged.connect(self._mark_dirty)
         form_layout.addRow("&Pages:", self.pages_edit)
 
@@ -449,7 +465,7 @@ class SettingsDialog(QDialog):
         self.log_file_edit.setPlaceholderText("Leave empty to log to console only")
         log_tooltip = "Optional path to write logs to a file. Leave empty to log to console only."
         self.log_file_edit.setToolTip(log_tooltip)
-        self.log_file_edit._original_tooltip = log_tooltip  # type: ignore[attr-defined]
+        self.log_file_edit._original_tooltip = log_tooltip
         self.log_file_edit.textChanged.connect(self._mark_dirty)
         self.browse_log_file_button = QToolButton()
         self.browse_log_file_button.setText("...")
@@ -508,6 +524,16 @@ class SettingsDialog(QDialog):
         if hasattr(self, "picture_descriptions_checkbox"):
             self.picture_descriptions_checkbox.toggled.connect(self._on_picture_descriptions_toggled)
             self.picture_descriptions_checkbox.toggled.connect(self._update_dialog_buttons_enabled)
+
+        # Connect preset control signals
+        if hasattr(self, "preset_combo"):
+            self.preset_combo.currentTextChanged.connect(self._on_preset_selection_changed)
+        if hasattr(self, "new_preset_button"):
+            self.new_preset_button.clicked.connect(self._on_new_preset_clicked)
+        if hasattr(self, "save_preset_button"):
+            self.save_preset_button.clicked.connect(self._on_save_preset_clicked)
+        if hasattr(self, "delete_preset_button"):
+            self.delete_preset_button.clicked.connect(self._on_delete_preset_clicked)
 
     def onAccept(self) -> None:
         """Handle OK button click."""
@@ -575,75 +601,115 @@ class SettingsDialog(QDialog):
         # Mark as dirty and validate
         self._mark_dirty()
 
+    def _create_preset_controls(self) -> QWidget:
+        """Create the preset management controls."""
+        widget = QWidget()
+        widget.setAccessibleName("Preset controls")
+
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+
+        # Preset label
+        preset_label = QLabel("Preset:")
+        preset_label.setAccessibleName("Preset selection label")
+        layout.addWidget(preset_label)
+
+        # Preset dropdown
+        self.preset_combo = QComboBox()
+        self.preset_combo.setAccessibleName("Preset selection")
+        self.preset_combo.setToolTip("Select a configuration preset")
+        self.preset_combo.setMinimumWidth(200)
+        layout.addWidget(self.preset_combo)
+
+        # New preset button
+        self.new_preset_button = QPushButton("New...")
+        self.new_preset_button.setAccessibleName("Create new preset")
+        self.new_preset_button.setToolTip("Create a new preset from current settings")
+        layout.addWidget(self.new_preset_button)
+
+        # Save preset button
+        self.save_preset_button = QPushButton("Save")
+        self.save_preset_button.setAccessibleName("Save preset")
+        self.save_preset_button.setToolTip("Save current settings to selected preset")
+        self.save_preset_button.setEnabled(False)  # Disabled when no preset selected
+        layout.addWidget(self.save_preset_button)
+
+        # Delete preset button
+        self.delete_preset_button = QPushButton("Delete")
+        self.delete_preset_button.setAccessibleName("Delete preset")
+        self.delete_preset_button.setToolTip("Delete the selected preset")
+        self.delete_preset_button.setEnabled(False)  # Disabled when no preset selected
+        layout.addWidget(self.delete_preset_button)
+
+        # Add stretch to push buttons to the left
+        layout.addStretch()
+
+        return widget
+
     def loadSettings(self) -> None:
         """Load settings from persistent storage."""
-        settings = QSettings()
+        # Load configuration using ConfigManager
+        config = self._config_manager.load_all()
+
+        # Populate preset dropdown
+        self._refresh_preset_list()
+
+        # Select last used preset if available
+        last_preset = self._config_manager.get_last_used_preset()
+        if last_preset and last_preset in [self.preset_combo.itemText(i) for i in range(self.preset_combo.count())]:
+            self.preset_combo.setCurrentText(last_preset)
+        else:
+            self.preset_combo.setCurrentIndex(-1)  # No selection
 
         # Load General tab settings
         if hasattr(self, "author_edit"):
-            author = cast(str, settings.value("General/author", "", str))
-            self.author_edit.setText(author)
+            self.author_edit.setText(config.get("author", ""))
         if hasattr(self, "license_edit"):
-            license_text = cast(str, settings.value("General/license", "", str))
-            self.license_edit.setText(license_text)
+            self.license_edit.setText(config.get("license", ""))
         if hasattr(self, "pack_name_edit"):
-            pack_name = cast(str, settings.value("General/packName", "", str))
-            self.pack_name_edit.setText(pack_name)
+            self.pack_name_edit.setText(config.get("pack_name", ""))
         if hasattr(self, "output_dir_selector"):
-            # Default to user's Documents directory or current working directory
-            default_output = str(Path.home() / "Documents")
-            if not Path(default_output).exists():
-                default_output = str(Path.cwd())
-            output_dir = cast(str, settings.value("General/outputDir", default_output, str))
-            self.output_dir_selector.set_path(output_dir)
+            self.output_dir_selector.set_path(config.get("output_dir", ""))
         if hasattr(self, "deterministic_ids_checkbox"):
-            deterministic = cast(bool, settings.value("General/deterministicIds", True, bool))
-            self.deterministic_ids_checkbox.setChecked(deterministic)
+            self.deterministic_ids_checkbox.setChecked(config.get("deterministic_ids", True))
 
         # Load Conversion tab settings
         if hasattr(self, "toc_checkbox"):
-            toc = cast(bool, settings.value("Conversion/toc", True, bool))
-            self.toc_checkbox.setChecked(toc)
+            self.toc_checkbox.setChecked(config.get("toc", True))
         if hasattr(self, "tables_combo"):
-            tables = cast(str, settings.value("Conversion/tables", "auto", str))
+            tables = config.get("tables", "auto")
             if tables in ["auto", "structured", "image-only"]:
                 self.tables_combo.setCurrentText(tables)
         if hasattr(self, "ocr_combo"):
-            ocr = cast(str, settings.value("Conversion/ocr", "auto", str))
+            ocr = config.get("ocr", "auto")
             if ocr in ["auto", "on", "off"]:
                 self.ocr_combo.setCurrentText(ocr)
         if hasattr(self, "picture_descriptions_checkbox"):
-            pic_desc = cast(bool, settings.value("Conversion/pictureDescriptions", False, bool))
+            pic_desc = config.get("picture_descriptions", False)
             self.picture_descriptions_checkbox.setChecked(pic_desc)
             self._on_picture_descriptions_toggled(pic_desc)
         if hasattr(self, "vlm_repo_edit"):
-            vlm_repo = cast(str, settings.value("Conversion/vlmRepo", "", str))
-            self.vlm_repo_edit.setText(vlm_repo)
+            self.vlm_repo_edit.setText(config.get("vlm_repo", ""))
         if hasattr(self, "pages_edit"):
-            pages = cast(str, settings.value("Conversion/pages", "", str))
-            self.pages_edit.setText(pages)
+            self.pages_edit.setText(config.get("pages", ""))
 
         # Load Debug tab settings
         if hasattr(self, "verbose_checkbox"):
-            verbose = cast(bool, settings.value("Debug/verbose", False, bool))
-            self.verbose_checkbox.setChecked(verbose)
+            self.verbose_checkbox.setChecked(config.get("verbose", False))
         if hasattr(self, "log_level_combo"):
-            log_level = cast(str, settings.value("Debug/logLevel", "INFO", str))
+            log_level = config.get("log_level", "INFO")
             if log_level in ["DEBUG", "INFO", "WARNING", "ERROR"]:
                 self.log_level_combo.setCurrentText(log_level)
         if hasattr(self, "dry_run_checkbox"):
-            dry_run = cast(bool, settings.value("Debug/dryRun", False, bool))
-            self.dry_run_checkbox.setChecked(dry_run)
+            self.dry_run_checkbox.setChecked(config.get("dry_run", False))
         if hasattr(self, "keep_temp_checkbox"):
-            keep_temp = cast(bool, settings.value("Debug/keepTemp", False, bool))
-            self.keep_temp_checkbox.setChecked(keep_temp)
+            self.keep_temp_checkbox.setChecked(config.get("keep_temp", False))
         if hasattr(self, "log_file_edit"):
-            log_file = cast(str, settings.value("Debug/logFile", "", str))
-            self.log_file_edit.setText(log_file)
+            self.log_file_edit.setText(config.get("log_file", ""))
 
         # Load export debug path
-        export_debug = cast(str, settings.value("Debug/exportDebugPath", "", str))
-        self._export_debug_path = export_debug if export_debug else None
+        self._export_debug_path = config.get("export_debug_path") or None
 
         # Reset dirty state after loading (only if not initializing)
         if not self._initializing:
@@ -655,55 +721,59 @@ class SettingsDialog(QDialog):
 
     def saveSettings(self) -> None:
         """Save settings to persistent storage."""
-        settings = QSettings()
-
         # Only save valid settings
         if not self.validateAll():
             return
 
+        # Collect current configuration
+        config: dict[str, Any] = {}
+
         # Save General tab settings
         if hasattr(self, "author_edit"):
-            settings.setValue("General/author", self.author_edit.text().strip())
+            config["author"] = self.author_edit.text().strip()
         if hasattr(self, "license_edit"):
-            settings.setValue("General/license", self.license_edit.text().strip())
+            config["license"] = self.license_edit.text().strip()
         if hasattr(self, "pack_name_edit"):
-            settings.setValue("General/packName", self.pack_name_edit.text().strip())
+            config["pack_name"] = self.pack_name_edit.text().strip()
         if hasattr(self, "output_dir_selector"):
-            settings.setValue("General/outputDir", self.output_dir_selector.path())
+            config["output_dir"] = self.output_dir_selector.path()
         if hasattr(self, "deterministic_ids_checkbox"):
-            settings.setValue("General/deterministicIds", self.deterministic_ids_checkbox.isChecked())
+            config["deterministic_ids"] = self.deterministic_ids_checkbox.isChecked()
 
         # Save Conversion tab settings
         if hasattr(self, "toc_checkbox"):
-            settings.setValue("Conversion/toc", self.toc_checkbox.isChecked())
+            config["toc"] = self.toc_checkbox.isChecked()
         if hasattr(self, "tables_combo"):
-            settings.setValue("Conversion/tables", self.tables_combo.currentText())
+            config["tables"] = self.tables_combo.currentText()
         if hasattr(self, "ocr_combo"):
-            settings.setValue("Conversion/ocr", self.ocr_combo.currentText())
+            config["ocr"] = self.ocr_combo.currentText()
         if hasattr(self, "picture_descriptions_checkbox"):
-            settings.setValue("Conversion/pictureDescriptions", self.picture_descriptions_checkbox.isChecked())
+            config["picture_descriptions"] = self.picture_descriptions_checkbox.isChecked()
         if hasattr(self, "vlm_repo_edit"):
-            settings.setValue("Conversion/vlmRepo", self.vlm_repo_edit.text().strip())
+            config["vlm_repo"] = self.vlm_repo_edit.text().strip()
         if hasattr(self, "pages_edit"):
-            settings.setValue("Conversion/pages", self.pages_edit.text().strip())
+            config["pages"] = self.pages_edit.text().strip()
 
         # Save Debug tab settings
         if hasattr(self, "verbose_checkbox"):
-            settings.setValue("Debug/verbose", self.verbose_checkbox.isChecked())
+            config["verbose"] = self.verbose_checkbox.isChecked()
         if hasattr(self, "log_level_combo"):
-            settings.setValue("Debug/logLevel", self.log_level_combo.currentText())
+            config["log_level"] = self.log_level_combo.currentText()
         if hasattr(self, "dry_run_checkbox"):
-            settings.setValue("Debug/dryRun", self.dry_run_checkbox.isChecked())
+            config["dry_run"] = self.dry_run_checkbox.isChecked()
         if hasattr(self, "keep_temp_checkbox"):
-            settings.setValue("Debug/keepTemp", self.keep_temp_checkbox.isChecked())
+            config["keep_temp"] = self.keep_temp_checkbox.isChecked()
         if hasattr(self, "log_file_edit"):
-            settings.setValue("Debug/logFile", self.log_file_edit.text().strip())
+            config["log_file"] = self.log_file_edit.text().strip()
 
         # Save export debug path
         if self._export_debug_path:
-            settings.setValue("Debug/exportDebugPath", self._export_debug_path)
+            config["export_debug_path"] = self._export_debug_path
         else:
-            settings.remove("Debug/exportDebugPath")
+            config["export_debug_path"] = ""
+
+        # Import configuration to ConfigManager
+        self._config_manager.import_config(config)
 
     def validateAll(self) -> bool:
         """Validate all input fields."""
@@ -945,6 +1015,225 @@ class SettingsDialog(QDialog):
                 i += 1
 
         return args_dict
+
+    def _refresh_preset_list(self) -> None:
+        """Refresh the preset dropdown with available presets."""
+        current_selection = self.preset_combo.currentText()
+
+        self.preset_combo.clear()
+        self.preset_combo.addItem("(No preset selected)", "")
+
+        try:
+            presets = self._preset_manager.list_presets()
+            for preset_name in presets:
+                self.preset_combo.addItem(preset_name, preset_name)
+        except Exception as e:
+            logger.error(f"Failed to load presets: {e}")
+            QMessageBox.warning(self, "Preset Error", f"Failed to load presets: {e}")
+
+        # Restore selection if it still exists
+        if current_selection:
+            index = self.preset_combo.findText(current_selection)
+            if index >= 0:
+                self.preset_combo.setCurrentIndex(index)
+
+        # Update button states
+        self._update_preset_button_states()
+
+    def _update_preset_button_states(self) -> None:
+        """Update the enabled state of preset buttons based on current selection."""
+        has_selection = self.preset_combo.currentIndex() > 0
+        self.save_preset_button.setEnabled(has_selection)
+        self.delete_preset_button.setEnabled(has_selection)
+
+    def _on_preset_selection_changed(self) -> None:
+        """Handle preset selection change."""
+        if self._initializing:
+            return
+
+        current_preset = self.preset_combo.currentData()
+
+        if current_preset:
+            # Load the selected preset
+            try:
+                config = self._preset_manager.load_preset(current_preset)
+                self._config_manager.import_config(config)
+
+                # Reload UI with new configuration
+                self._initializing = True  # Prevent marking as dirty
+                self.loadSettings()
+                self._initializing = False
+
+                # Update last used preset
+                self._config_manager.set_last_used_preset(current_preset)
+
+                logger.info(f"Loaded preset: {current_preset}")
+
+            except PresetError as e:
+                logger.error(f"Failed to load preset '{current_preset}': {e}")
+                QMessageBox.warning(self, "Preset Error", f"Failed to load preset '{current_preset}': {e}")
+                self.preset_combo.setCurrentIndex(0)  # Reset to no selection
+        else:
+            # Clear last used preset
+            self._config_manager.set_last_used_preset(None)
+
+        self._update_preset_button_states()
+
+    def _on_new_preset_clicked(self) -> None:
+        """Handle New preset button click."""
+        name, ok = QInputDialog.getText(self, "New Preset", "Enter preset name:", text="My Preset")
+
+        if not ok or not name.strip():
+            return
+
+        name = name.strip()
+
+        # Check if preset already exists
+        if self._preset_manager.preset_exists(name):
+            reply = QMessageBox.question(
+                self,
+                "Preset Exists",
+                f"Preset '{name}' already exists. Overwrite?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+        try:
+            # Get current configuration
+            current_config = self._get_current_config()
+
+            # Save preset
+            self._preset_manager.save_preset(name, current_config, overwrite=True)
+
+            # Refresh list and select new preset
+            self._refresh_preset_list()
+            self.preset_combo.setCurrentText(name)
+
+            # Update last used preset
+            self._config_manager.set_last_used_preset(name)
+
+            logger.info(f"Created preset: {name}")
+
+        except PresetError as e:
+            logger.error(f"Failed to create preset '{name}': {e}")
+            QMessageBox.warning(self, "Preset Error", f"Failed to create preset '{name}': {e}")
+
+    def _on_save_preset_clicked(self) -> None:
+        """Handle Save preset button click."""
+        current_preset = self.preset_combo.currentData()
+        if not current_preset:
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Save Preset",
+            f"Save current settings to preset '{current_preset}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            # Get current configuration
+            current_config = self._get_current_config()
+
+            # Save preset
+            self._preset_manager.save_preset(current_preset, current_config, overwrite=True)
+
+            logger.info(f"Saved preset: {current_preset}")
+
+        except PresetError as e:
+            logger.error(f"Failed to save preset '{current_preset}': {e}")
+            QMessageBox.warning(self, "Preset Error", f"Failed to save preset '{current_preset}': {e}")
+
+    def _on_delete_preset_clicked(self) -> None:
+        """Handle Delete preset button click."""
+        current_preset = self.preset_combo.currentData()
+        if not current_preset:
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Delete Preset",
+            f"Delete preset '{current_preset}'? This cannot be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            # Delete preset
+            self._preset_manager.delete_preset(current_preset)
+
+            # Refresh list and clear selection
+            self._refresh_preset_list()
+            self.preset_combo.setCurrentIndex(0)  # No selection
+
+            # Clear last used preset if it was this one
+            if self._config_manager.get_last_used_preset() == current_preset:
+                self._config_manager.set_last_used_preset(None)
+
+            logger.info(f"Deleted preset: {current_preset}")
+
+        except PresetError as e:
+            logger.error(f"Failed to delete preset '{current_preset}': {e}")
+            QMessageBox.warning(self, "Preset Error", f"Failed to delete preset '{current_preset}': {e}")
+
+    def _get_current_config(self) -> dict[str, Any]:
+        """Get the current configuration from UI controls."""
+        config: dict[str, Any] = {}
+
+        # General tab settings
+        if hasattr(self, "author_edit"):
+            config["author"] = self.author_edit.text().strip()
+        if hasattr(self, "license_edit"):
+            config["license"] = self.license_edit.text().strip()
+        if hasattr(self, "pack_name_edit"):
+            config["pack_name"] = self.pack_name_edit.text().strip()
+        if hasattr(self, "output_dir_selector"):
+            config["output_dir"] = self.output_dir_selector.path()
+        if hasattr(self, "deterministic_ids_checkbox"):
+            config["deterministic_ids"] = self.deterministic_ids_checkbox.isChecked()
+
+        # Conversion tab settings
+        if hasattr(self, "toc_checkbox"):
+            config["toc"] = self.toc_checkbox.isChecked()
+        if hasattr(self, "tables_combo"):
+            config["tables"] = self.tables_combo.currentText()
+        if hasattr(self, "ocr_combo"):
+            config["ocr"] = self.ocr_combo.currentText()
+        if hasattr(self, "picture_descriptions_checkbox"):
+            config["picture_descriptions"] = self.picture_descriptions_checkbox.isChecked()
+        if hasattr(self, "vlm_repo_edit"):
+            config["vlm_repo"] = self.vlm_repo_edit.text().strip()
+        if hasattr(self, "pages_edit"):
+            config["pages"] = self.pages_edit.text().strip()
+
+        # Debug tab settings
+        if hasattr(self, "verbose_checkbox"):
+            config["verbose"] = self.verbose_checkbox.isChecked()
+        if hasattr(self, "log_level_combo"):
+            config["log_level"] = self.log_level_combo.currentText()
+        if hasattr(self, "dry_run_checkbox"):
+            config["dry_run"] = self.dry_run_checkbox.isChecked()
+        if hasattr(self, "keep_temp_checkbox"):
+            config["keep_temp"] = self.keep_temp_checkbox.isChecked()
+        if hasattr(self, "log_file_edit"):
+            config["log_file"] = self.log_file_edit.text().strip()
+
+        # Export debug path
+        if self._export_debug_path:
+            config["export_debug_path"] = self._export_debug_path
+        else:
+            config["export_debug_path"] = ""
+
+        return config
 
     def _mark_dirty(self) -> None:
         """Mark settings as modified and enable Apply button."""

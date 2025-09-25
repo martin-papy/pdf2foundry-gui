@@ -708,7 +708,7 @@ class TestSettingsDialog:
 
         # Patch both the import and the class
         monkeypatch.setattr("PySide6.QtCore.QSettings", MockQSettings)
-        monkeypatch.setattr("gui.dialogs.settings.QSettings", MockQSettings)
+        monkeypatch.setattr("core.config_manager.QSettings", MockQSettings)
 
         # Create first dialog and set some values
         dialog1 = SettingsDialog()
@@ -750,7 +750,7 @@ class TestSettingsDialog:
 
         # Patch both the import and the class
         monkeypatch.setattr("PySide6.QtCore.QSettings", MockQSettings)
-        monkeypatch.setattr("gui.dialogs.settings.QSettings", MockQSettings)
+        monkeypatch.setattr("core.config_manager.QSettings", MockQSettings)
 
         # Create dialog - should load defaults
         dialog = SettingsDialog()
@@ -780,7 +780,7 @@ class TestSettingsDialog:
 
         # Patch both the import and the class
         monkeypatch.setattr("PySide6.QtCore.QSettings", MockQSettings)
-        monkeypatch.setattr("gui.dialogs.settings.QSettings", MockQSettings)
+        monkeypatch.setattr("core.config_manager.QSettings", MockQSettings)
 
         dialog = SettingsDialog()
         qtbot.addWidget(dialog)

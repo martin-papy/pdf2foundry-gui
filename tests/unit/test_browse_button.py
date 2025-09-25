@@ -102,7 +102,7 @@ class TestBrowseButtonFunctionality:
         assert window.status_label.text() == initial_status
         assert window.selected_file_path == initial_file_path
 
-    @patch("gui.main.QSettings")
+    @patch("core.config_manager.QSettings")
     def test_settings_persistence(self, mock_settings_class, qtbot, tmp_path):
         """Test that last directory is saved and loaded correctly."""
         # Mock QSettings instance
@@ -115,7 +115,7 @@ class TestBrowseButtonFunctionality:
         qtbot.addWidget(window)
 
         # Verify settings were loaded
-        mock_settings.value.assert_called_with("ui/last_open_dir", None)
+        mock_settings.value.assert_called_with("last_open_dir", "")
         assert window.last_directory == str(tmp_path)
 
         # Test saving settings
@@ -124,12 +124,18 @@ class TestBrowseButtonFunctionality:
         window._save_settings()
 
         # Verify settings were saved
-        mock_settings.setValue.assert_called_with("ui/last_open_dir", new_dir)
+        mock_settings.setValue.assert_called_with("last_open_dir", new_dir)
 
     @patch("gui.main.QFileDialog.getOpenFileName")
     @patch("gui.main.QStandardPaths.writableLocation")
-    def test_directory_fallback(self, mock_standard_paths, mock_dialog, qtbot):
+    @patch("core.config_manager.QSettings")
+    def test_directory_fallback(self, mock_settings_class, mock_standard_paths, mock_dialog, qtbot):
         """Test fallback to Documents directory when no last directory."""
+        # Mock QSettings
+        mock_settings = Mock()
+        mock_settings_class.return_value = mock_settings
+        mock_settings.value.return_value = ""  # No last directory stored
+
         window = MainWindow()
         qtbot.addWidget(window)
 
@@ -146,7 +152,8 @@ class TestBrowseButtonFunctionality:
         window.on_browse_clicked()
 
         # Verify Documents directory was used as fallback
-        mock_standard_paths.assert_called_once()
+        # Note: QStandardPaths.writableLocation is called multiple times (ConfigManager + browse logic)
+        assert mock_standard_paths.call_count >= 1
         mock_dialog.assert_called_once()
         args = mock_dialog.call_args[0]
         assert args[2] == "/Users/test/Documents"  # start directory

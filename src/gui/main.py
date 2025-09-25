@@ -6,7 +6,7 @@ import os
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, QStandardPaths, Qt
+from PySide6.QtCore import QStandardPaths, Qt
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.config_manager import ConfigManager
 from core.pdf_utils import is_pdf_file
 from gui.widgets.drag_drop import DragDropLabel
 
@@ -33,6 +34,9 @@ class MainWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
+
+        # Configuration management
+        self._config_manager = ConfigManager()
 
         # State
         self.selected_file_path: str | None = None
@@ -140,15 +144,12 @@ class MainWindow(QMainWindow):
 
     def _load_settings(self) -> None:
         """Load application settings."""
-        settings = QSettings("PDF2Foundry", "GUI")
-        last_dir = settings.value("ui/last_open_dir", None)
-        self.last_directory = str(last_dir) if last_dir is not None else None
+        self.last_directory = self._config_manager.get("last_open_dir") or None
 
     def _save_settings(self) -> None:
         """Save application settings."""
-        settings = QSettings("PDF2Foundry", "GUI")
         if self.last_directory:
-            settings.setValue("ui/last_open_dir", self.last_directory)
+            self._config_manager.set("last_open_dir", self.last_directory)
 
     def on_browse_clicked(self) -> None:
         """Handle Browse button click to open file dialog."""

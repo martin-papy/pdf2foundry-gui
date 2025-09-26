@@ -46,4 +46,3 @@ node_modules/
 # Pre-commit debug logs
 .git/precommit-debug.logs
 .coverage
-.coverage

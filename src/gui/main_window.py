@@ -6,19 +6,21 @@ user interface for the application.
 """
 
 import logging
+from enum import Enum
 from pathlib import Path
 
-from PySide6.QtCore import QStandardPaths, Qt
+from PySide6.QtCore import QSettings, QStandardPaths, Qt
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QMainWindow,
     QProgressBar,
     QPushButton,
-    QTextEdit,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -28,6 +30,20 @@ from core.gui_mapping import GuiConfigMapper
 from core.pdf_utils import is_pdf_file
 from gui.conversion_handler import ConversionHandler
 from gui.widgets.drag_drop import DragDropLabel
+from gui.widgets.log_console import LogConsole
+
+
+class StatusState(Enum):
+    """Status indicator states with associated colors."""
+
+    IDLE = ("Idle", "#9e9e9e")
+    RUNNING = ("Running", "#fbc02d")
+    COMPLETED = ("Completed", "#43a047")
+    ERROR = ("Error", "#e53935")
+
+    def __init__(self, display_name: str, color: str) -> None:
+        self.display_name = display_name
+        self.color = color
 
 
 class MainWindow(QMainWindow):
@@ -62,7 +78,17 @@ class MainWindow(QMainWindow):
         self.cancel_button: QPushButton
         self.progress_bar: QProgressBar
         self.progress_status: QLabel
-        self.log_text: QTextEdit
+        self.log_console: LogConsole
+
+        # Enhanced progress tracking components
+        self.status_indicator: QWidget
+        self.status_dot: QLabel
+        self.status_text: QLabel
+        self.log_toggle_button: QToolButton
+        self.log_panel: QFrame
+
+        # Settings for UI state persistence
+        self._settings = QSettings("PDF2Foundry", "GUI")
 
         # Initialize UI
         self._setup_window()
@@ -206,14 +232,23 @@ class MainWindow(QMainWindow):
         progress_widget = QWidget()
         progress_layout = QVBoxLayout(progress_widget)
         progress_layout.setContentsMargins(0, 0, 0, 0)
-        progress_layout.setSpacing(5)
+        progress_layout.setSpacing(10)
+
+        # Status indicator row
+        status_row = self._create_status_indicator()
+        progress_layout.addWidget(status_row)
 
         # Progress bar
         self.progress_bar = QProgressBar()
+        self.progress_bar.setObjectName("progressBar")
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(True)
+        self.progress_bar.setFormat("%p%")
         self.progress_bar.setVisible(False)
         progress_layout.addWidget(self.progress_bar)
 
-        # Progress status
+        # Progress status (keep for compatibility)
         self.progress_status = QLabel()
         self.progress_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.progress_status.setVisible(False)
@@ -223,33 +258,52 @@ class MainWindow(QMainWindow):
         return progress_widget
 
     def _create_log_section(self) -> QWidget:
-        """Create log output section."""
+        """Create collapsible log output section."""
         log_widget = QWidget()
         log_layout = QVBoxLayout(log_widget)
         log_layout.setContentsMargins(0, 0, 0, 0)
         log_layout.setSpacing(5)
 
+        # Collapsible header
+        header_widget = QWidget()
+        header_layout = QHBoxLayout(header_widget)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(5)
+
+        # Toggle button
+        self.log_toggle_button = QToolButton()
+        self.log_toggle_button.setObjectName("logToggleButton")
+        self.log_toggle_button.setCheckable(True)
+        self.log_toggle_button.setArrowType(Qt.ArrowType.DownArrow)
+        self.log_toggle_button.setToolTip("Toggle log panel visibility")
+        self.log_toggle_button.toggled.connect(self._on_log_panel_toggled)
+        header_layout.addWidget(self.log_toggle_button)
+
         # Log label
         log_label = QLabel("Conversion Log:")
         log_label.setStyleSheet("QLabel { font-weight: bold; }")
-        log_layout.addWidget(log_label)
+        header_layout.addWidget(log_label)
+        header_layout.addStretch()
 
-        # Log text area
-        self.log_text = QTextEdit()
-        self.log_text.setReadOnly(True)
-        self.log_text.setMaximumHeight(200)
-        self.log_text.setStyleSheet(
-            """
-            QTextEdit {
-                background-color: #f8f9fa;
-                border: 1px solid #dee2e6;
-                border-radius: 4px;
-                font-family: 'Courier New', monospace;
-                font-size: 12px;
-            }
-        """
-        )
-        log_layout.addWidget(self.log_text)
+        log_layout.addWidget(header_widget)
+
+        # Collapsible log panel
+        self.log_panel = QFrame()
+        self.log_panel.setObjectName("logPanel")
+        self.log_panel.setFrameStyle(QFrame.Shape.NoFrame)
+        panel_layout = QVBoxLayout(self.log_panel)
+        panel_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Log console
+        self.log_console = LogConsole()
+        self.log_console.setObjectName("logConsole")
+        self.log_console.setMaximumHeight(200)
+        panel_layout.addWidget(self.log_console)
+
+        log_layout.addWidget(self.log_panel)
+
+        # Load and apply saved panel state
+        self._load_log_panel_state()
 
         return log_widget
 
@@ -274,11 +328,66 @@ class MainWindow(QMainWindow):
 
     def _load_settings(self) -> None:
         """Load settings from configuration."""
-        pass  # Placeholder for future settings loading
+        # Initialize status indicator to idle state
+        self._set_status(StatusState.IDLE)
 
     def _save_settings(self) -> None:
         """Save settings to configuration."""
         pass  # Placeholder for future settings saving
+
+    def _create_status_indicator(self) -> QWidget:
+        """Create the status indicator with colored dot and text."""
+        self.status_indicator = QWidget()
+        self.status_indicator.setObjectName("statusIndicator")
+        status_layout = QHBoxLayout(self.status_indicator)
+        status_layout.setContentsMargins(0, 0, 0, 0)
+        status_layout.setSpacing(8)
+
+        # Status dot
+        self.status_dot = QLabel()
+        self.status_dot.setFixedSize(10, 10)
+        self.status_dot.setStyleSheet(
+            """
+            QLabel {
+                border-radius: 5px;
+                background-color: #9e9e9e;
+            }
+        """
+        )
+        status_layout.addWidget(self.status_dot)
+
+        # Status text
+        self.status_text = QLabel("Idle")
+        self.status_text.setStyleSheet("QLabel { font-weight: bold; }")
+        status_layout.addWidget(self.status_text)
+
+        status_layout.addStretch()
+        return self.status_indicator
+
+    def _set_status(self, state: StatusState) -> None:
+        """Update the status indicator with the given state."""
+        self.status_dot.setStyleSheet(
+            f"""
+            QLabel {{
+                border-radius: 5px;
+                background-color: {state.color};
+            }}
+        """
+        )
+        self.status_text.setText(state.display_name)
+
+    def _load_log_panel_state(self) -> None:
+        """Load and apply the saved log panel expanded state."""
+        expanded: bool = bool(self._settings.value("ui/logPanelExpanded", True, type=bool))
+        self.log_toggle_button.setChecked(expanded)
+        self.log_panel.setVisible(expanded)
+        self.log_toggle_button.setArrowType(Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow)
+
+    def _on_log_panel_toggled(self, expanded: bool) -> None:
+        """Handle log panel toggle button state change."""
+        self.log_panel.setVisible(expanded)
+        self.log_toggle_button.setArrowType(Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow)
+        self._settings.setValue("ui/logPanelExpanded", expanded)
 
     def on_browse_clicked(self) -> None:
         """Handle browse button click."""

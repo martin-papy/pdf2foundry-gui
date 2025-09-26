@@ -85,14 +85,14 @@ class ConversionHandler(QObject):
     def cancel_conversion(self) -> None:
         """Handle cancel button click."""
         self._conversion_controller.cancel_conversion()
-        self._main_window.log_text.append("Cancellation requested...")
+        self._main_window.log_console.append_log("INFO", "Cancellation requested...")
 
     @Slot()
     def _on_conversion_started(self) -> None:
         """Handle conversion started signal."""
         self._set_conversion_state(True)
-        self._main_window.log_text.clear()
-        self._main_window.log_text.append("Starting conversion...")
+        self._main_window.log_console.clear()
+        self._main_window.log_console.append_log("INFO", "Starting conversion...")
 
     @Slot()
     def _on_conversion_finished(self) -> None:
@@ -109,11 +109,7 @@ class ConversionHandler(QObject):
     @Slot(str, str)
     def on_log_message(self, level: str, message: str) -> None:
         """Handle log messages from worker."""
-        formatted_message = f"[{level}] {message}"
-        self._main_window.log_text.append(formatted_message)
-        # Auto-scroll to bottom
-        scrollbar = self._main_window.log_text.verticalScrollBar()
-        scrollbar.setValue(scrollbar.maximum())
+        self._main_window.log_console.append_log(level, message)
 
     @Slot(dict)
     def on_conversion_completed(self, result: dict) -> None:
@@ -136,8 +132,8 @@ class ConversionHandler(QObject):
         """
         )
 
-        self._main_window.log_text.append("\n✓ Conversion completed successfully!")
-        self._main_window.log_text.append(f"Output directory: {output_dir}")
+        self._main_window.log_console.append_log("INFO", "✓ Conversion completed successfully!")
+        self._main_window.log_console.append_log("INFO", f"Output directory: {output_dir}")
 
     @Slot(str, str)
     def on_conversion_error(self, error_type: str, traceback_str: str) -> None:
@@ -157,8 +153,8 @@ class ConversionHandler(QObject):
         """
         )
 
-        self._main_window.log_text.append(f"\n✗ Conversion failed: {error_type}")
-        self._main_window.log_text.append(f"Error details: {traceback_str}")
+        self._main_window.log_console.append_log("ERROR", f"✗ Conversion failed: {error_type}")
+        self._main_window.log_console.append_log("ERROR", f"Error details: {traceback_str}")
 
     @Slot()
     def on_conversion_canceled(self) -> None:
@@ -178,7 +174,7 @@ class ConversionHandler(QObject):
         """
         )
 
-        self._main_window.log_text.append("\n⚠ Conversion canceled by user")
+        self._main_window.log_console.append_log("WARNING", "⚠ Conversion canceled by user")
 
     def _set_conversion_state(self, is_converting: bool) -> None:
         """Update UI state based on conversion status."""

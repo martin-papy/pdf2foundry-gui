@@ -7,12 +7,14 @@ separating layout concerns from business logic.
 
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, QStandardPaths
+from PySide6.QtCore import QSettings, QStandardPaths, Qt
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QFrame,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QProgressBar,
     QPushButton,
@@ -55,6 +57,13 @@ class MainWindowUI:
         self.log_console: LogConsole | None = None
         self.log_panel: QFrame | None = None
 
+        # Module configuration fields
+        self.module_id_input: QLineEdit | None = None
+        self.module_title_input: QLineEdit | None = None
+
+        # Action buttons
+        self.convert_button: QPushButton | None = None
+
     def setup_ui(self) -> None:
         """Set up the complete user interface."""
         self._setup_window_properties()
@@ -67,7 +76,7 @@ class MainWindowUI:
         """Set up basic window properties."""
         self.main_window.setWindowTitle("PDF2Foundry GUI")
         self.main_window.setMinimumSize(800, 600)
-        self.main_window.resize(1000, 700)
+        self.main_window.resize(800, 600)
 
     def _setup_central_widget(self) -> None:
         """Set up the central widget and main layout."""
@@ -77,10 +86,13 @@ class MainWindowUI:
         # Main layout
         main_layout = QVBoxLayout(self.central_widget)
         main_layout.setContentsMargins(20, 20, 20, 20)
-        main_layout.setSpacing(15)
+        main_layout.setSpacing(20)
 
         # File selection area
         self._setup_file_selection_area(main_layout)
+
+        # Button and controls area
+        self._setup_button_controls_area(main_layout)
 
         # Status and progress area
         self._setup_status_progress_area(main_layout)
@@ -93,21 +105,90 @@ class MainWindowUI:
         # Drag and drop area
         self.drag_drop_label = DragDropLabel()
         self.drag_drop_label.setMinimumHeight(200)
-        main_layout.addWidget(self.drag_drop_label)
+        main_layout.addWidget(self.drag_drop_label, 3)  # Give it more space
 
-        # Browse button
+    def _setup_button_controls_area(self, main_layout: QVBoxLayout) -> None:
+        """Set up the button and controls area (combines browse, module config, convert)."""
+        # Create a container widget for all controls
+        controls_widget = QWidget()
+        controls_layout = QVBoxLayout(controls_widget)
+        controls_layout.setContentsMargins(0, 0, 0, 0)
+        controls_layout.setSpacing(15)
+
+        # Button row (browse button)
         button_layout = QHBoxLayout()
         button_layout.addStretch()
 
-        self.browse_button = QPushButton("Browse for PDF...")
+        self.browse_button = QPushButton("Browse…")
         self.browse_button.setMinimumHeight(40)
-        self.browse_button.setAccessibleName("Browse for PDF file")
-        self.browse_button.setAccessibleDescription("Open file dialog to select a PDF file")
-        self.browse_button.setToolTip("Browse for PDF file to convert (Ctrl+O)")
+        self.browse_button.setAccessibleName("Browse for PDF")
+        self.browse_button.setAccessibleDescription("Opens a file dialog filtered to PDF files")
+        self.browse_button.setToolTip("Choose a PDF file (Ctrl+O)")
         button_layout.addWidget(self.browse_button)
 
         button_layout.addStretch()
-        main_layout.addLayout(button_layout)
+        controls_layout.addLayout(button_layout)
+
+        # Module configuration (conversion controls)
+        self._setup_module_config_section(controls_layout)
+
+        # Convert button
+        convert_layout = QHBoxLayout()
+        convert_layout.addStretch()
+
+        self.convert_button = QPushButton("Convert")
+        self.convert_button.setMinimumHeight(50)
+        self.convert_button.setMinimumWidth(200)
+        self.convert_button.setAccessibleName("Convert PDF")
+        self.convert_button.setAccessibleDescription("Start the PDF to Foundry VTT conversion")
+        self.convert_button.setToolTip("Start the PDF to Foundry VTT conversion")
+        self.convert_button.setEnabled(False)  # Initially disabled until inputs are valid
+        convert_layout.addWidget(self.convert_button)
+
+        convert_layout.addStretch()
+        controls_layout.addLayout(convert_layout)
+
+        # Add the container to main layout
+        main_layout.addWidget(controls_widget)
+
+    def _setup_module_config_section(self, controls_layout: QVBoxLayout) -> None:
+        """Set up the module configuration area."""
+        # Module configuration group
+        module_group = QGroupBox("Module Configuration")
+        module_layout = QVBoxLayout(module_group)
+        module_layout.setSpacing(10)
+
+        # Module ID input
+        id_layout = QHBoxLayout()
+        id_label = QLabel("Module ID:")
+        id_label.setMinimumWidth(100)
+        self.module_id_input = QLineEdit()
+        self.module_id_input.setPlaceholderText("e.g., my-awesome-book")
+        self.module_id_input.setAccessibleName("Module ID")
+        self.module_id_input.setAccessibleDescription("Unique module identifier (lowercase, hyphens only)")
+        self.module_id_input.setToolTip(
+            "Unique module ID (e.g. 'my-book'). Use lowercase letters, numbers, and hyphens only."
+        )
+
+        id_layout.addWidget(id_label)
+        id_layout.addWidget(self.module_id_input)
+        module_layout.addLayout(id_layout)
+
+        # Module title input
+        title_layout = QHBoxLayout()
+        title_label = QLabel("Module Title:")
+        title_label.setMinimumWidth(100)
+        self.module_title_input = QLineEdit()
+        self.module_title_input.setPlaceholderText("e.g., My Awesome Book")
+        self.module_title_input.setAccessibleName("Module Title")
+        self.module_title_input.setAccessibleDescription("Display name shown in Foundry VTT")
+        self.module_title_input.setToolTip("Display name shown in Foundry VTT")
+
+        title_layout.addWidget(title_label)
+        title_layout.addWidget(self.module_title_input)
+        module_layout.addLayout(title_layout)
+
+        controls_layout.addWidget(module_group)
 
     def _setup_status_progress_area(self, main_layout: QVBoxLayout) -> None:
         """Set up the status and progress area."""
@@ -127,8 +208,9 @@ class MainWindowUI:
         # Status label (for detailed messages)
         self.status_label = QLabel("Ready to convert PDF files")
         self.status_label.setAccessibleName("Status message")
-        self.status_label.setAccessibleDescription("Detailed status message")
+        self.status_label.setAccessibleDescription("Displays the current selection and errors")
         self.status_label.setWhatsThis("Shows detailed status information about the current operation")
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         apply_status_style(self.status_label, "default")
         status_layout.addWidget(self.status_label)
 
@@ -197,7 +279,7 @@ class MainWindowUI:
         self.log_console.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         log_panel_layout.addWidget(self.log_console)
 
-        main_layout.addWidget(self.log_panel)
+        main_layout.addWidget(self.log_panel, 2)  # Give it more stretch for log section
 
         # Connect log toggle
         self.log_toggle_button.toggled.connect(self._on_log_toggle)
@@ -218,13 +300,21 @@ class MainWindowUI:
 
     def _setup_accessibility(self) -> None:
         """Set up accessibility features."""
-        if not (self.drag_drop_label and self.browse_button and self.log_toggle_button):
+        if not (
+            self.drag_drop_label
+            and self.browse_button
+            and self.module_id_input
+            and self.module_title_input
+            and self.log_toggle_button
+        ):
             return
 
         # Set up tab order for keyboard navigation
         widgets = [
             self.drag_drop_label,
             self.browse_button,
+            self.module_id_input,
+            self.module_title_input,
             self.log_toggle_button,
         ]
 
@@ -240,12 +330,12 @@ class MainWindowUI:
 
         # Load window geometry
         geometry = settings.value("ui/geometry")
-        if geometry:
+        if geometry and isinstance(geometry, bytes | bytearray):
             self.main_window.restoreGeometry(geometry)
 
         # Load log panel state
         log_expanded = settings.value("ui/logPanelExpanded", True, type=bool)
-        if self.log_toggle_button:
+        if self.log_toggle_button and isinstance(log_expanded, bool):
             self.log_toggle_button.setChecked(log_expanded)
             self._on_log_toggle(log_expanded)
 

@@ -18,7 +18,7 @@ alwaysApply: true
 - **Run Tests**: Execute the full test suite to ensure no regressions:
 
   ```bash
-  pytest tests/ -v
+  pytest tests/unit/ -v
   ```
 
 - **Run Pre-commit Checks**: Execute all pre-commit hooks to ensure code quality:

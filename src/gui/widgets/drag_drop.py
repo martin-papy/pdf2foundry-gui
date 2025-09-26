@@ -171,9 +171,23 @@ class DragDropLabel(QLabel):
 
     def _reset_to_normal_delayed(self) -> None:
         """Reset to normal state after a short delay (for reject state)."""
+        import weakref
+
         from PySide6.QtCore import QTimer
 
-        QTimer.singleShot(3000, lambda: self._set_state(self.STATE_NORMAL))
+        # Use weak reference to avoid keeping widget alive
+        weak_self = weakref.ref(self)
+
+        def reset_if_alive() -> None:
+            import contextlib
+
+            widget = weak_self()
+            if widget is not None:
+                with contextlib.suppress(RuntimeError):
+                    # Widget was deleted, ignore
+                    widget._set_state(widget.STATE_NORMAL)
+
+        QTimer.singleShot(3000, reset_if_alive)
 
     # Drag and drop event handlers
 

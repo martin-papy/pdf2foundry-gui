@@ -14,9 +14,10 @@ from PySide6.QtWidgets import QMessageBox
 from core.gui_mapping import GuiMappingError
 from core.threading import ConversionController
 from gui.utils.styling import apply_status_style
+from gui.widgets.status_indicator import StatusState
 
 if TYPE_CHECKING:
-    from gui.main_window import MainWindow, StatusState
+    from gui.main_window import MainWindow
 
 
 class ConversionHandler(QObject):
@@ -59,7 +60,7 @@ class ConversionHandler(QObject):
         """Get the conversion controller."""
         return self._conversion_controller
 
-    def _set_status_state(self, state: "StatusState") -> None:
+    def _set_status_state(self, state: StatusState) -> None:
         """Update the main window status indicator."""
         self._main_window._set_status(state)
 
@@ -129,8 +130,6 @@ class ConversionHandler(QObject):
         """Handle progress updates from worker with throttling."""
         # Set status to Running on first progress update
         if not self._conversion_started:
-            from gui.widgets.status_indicator import StatusState
-
             self._set_status_state(StatusState.RUNNING)
             self._conversion_started = True
 
@@ -180,8 +179,6 @@ class ConversionHandler(QObject):
         # Stop progress throttling and set final state
         self._progress_timer.stop()
 
-        from gui.widgets.status_indicator import StatusState
-
         self._set_status_state(StatusState.COMPLETED)
 
         # Set progress to 100% completion
@@ -204,8 +201,6 @@ class ConversionHandler(QObject):
         # Stop progress throttling and set error state
         self._progress_timer.stop()
 
-        from gui.widgets.status_indicator import StatusState
-
         self._set_status_state(StatusState.ERROR)
 
         # Keep current progress value (don't jump to 100%)
@@ -222,8 +217,6 @@ class ConversionHandler(QObject):
         """Handle conversion cancellation."""
         # Stop progress throttling and set canceled state
         self._progress_timer.stop()
-
-        from gui.widgets.status_indicator import StatusState
 
         self._set_status_state(StatusState.IDLE)  # Return to idle after cancellation
 
@@ -245,7 +238,9 @@ class ConversionHandler(QObject):
     def _set_conversion_state(self, is_converting: bool) -> None:
         """Update UI state based on conversion status."""
         # Update button states
-        self._main_window.cancel_button.setEnabled(is_converting)
+        cancel_button = self._main_window.cancel_button
+        if hasattr(cancel_button, "setEnabled"):
+            cancel_button.setEnabled(is_converting)
         self.validate_inputs()  # This will update convert button state
 
         # Update progress visibility
@@ -257,8 +252,6 @@ class ConversionHandler(QObject):
             self._main_window.progress_status.setText("Initializing...")
         else:
             # Reset to idle state when not converting (unless already in terminal state)
-            from gui.widgets.status_indicator import StatusState
-
             if not self._conversion_started:  # Only reset if we haven't started yet
                 self._set_status_state(StatusState.IDLE)
 
@@ -272,6 +265,10 @@ class ConversionHandler(QObject):
         msg_box.setWindowTitle(title)
         msg_box.setText(message)
         msg_box.exec()
+
+    def cleanup(self) -> None:
+        """Clean up resources when the handler is being destroyed."""
+        self.shutdown()
 
     def shutdown(self, timeout_ms: int = 2000) -> None:
         """Handle application shutdown gracefully."""

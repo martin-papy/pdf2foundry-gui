@@ -68,6 +68,10 @@ class LogSearchManager(QWidget):
         self._search_matches.clear()
         self._text_edit.setExtraSelections([])
 
+    def get_search_text(self) -> str | None:
+        """Get the current search text."""
+        return self._search_text
+
     def get_match_count(self) -> int:
         """Get the number of search matches."""
         return len(self._search_matches)
@@ -152,9 +156,12 @@ class LogSearchManager(QWidget):
 
         self._text_edit.setExtraSelections(selections)
 
-        # Reset current match index
-        if self._search_matches and self._current_match_index >= len(self._search_matches):
-            self._current_match_index = 0
+        # Set current match index
+        if self._search_matches:
+            if self._current_match_index < 0 or self._current_match_index >= len(self._search_matches):
+                self._current_match_index = 0
+        else:
+            self._current_match_index = -1
 
     def _highlight_current_match(self) -> None:
         """Highlight the current match with active styling and center it in view."""
@@ -185,4 +192,4 @@ class LogSearchManager(QWidget):
             cursor.setPosition(start)
             cursor.setPosition(start + length, QTextCursor.MoveMode.KeepAnchor)
             self._text_edit.setTextCursor(cursor)
-            self._text_edit.centerCursor()
+            self._text_edit.ensureCursorVisible()

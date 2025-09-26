@@ -186,14 +186,16 @@ class LogControlsWidget(QWidget):
 
         # Load level filter
         level_filter = settings.value("ui/logConsole/levelFilter", "All")
-        index = self._level_filter.findText(level_filter)
-        if index >= 0:
-            self._level_filter.setCurrentIndex(index)
+        if isinstance(level_filter, str):
+            index = self._level_filter.findText(level_filter)
+            if index >= 0:
+                self._level_filter.setCurrentIndex(index)
 
         # Load auto-scroll state
         auto_scroll = settings.value("ui/logConsole/autoScrollEnabled", True, type=bool)
-        self._auto_scroll_checkbox.setChecked(auto_scroll)
-        self._on_auto_scroll_toggled(auto_scroll)
+        if isinstance(auto_scroll, bool):
+            self._auto_scroll_checkbox.setChecked(auto_scroll)
+            self._on_auto_scroll_toggled(auto_scroll)
 
     def _on_level_filter_changed(self, level: str) -> None:
         """Handle level filter changes."""

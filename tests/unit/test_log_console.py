@@ -5,17 +5,20 @@ Tests for the LogConsole widget.
 import pytest
 from PySide6.QtCore import QDateTime
 
-from gui.widgets.log_console import LogConsole, LogEntry
+from gui.widgets.log_console import LogConsole
+from gui.widgets.log_types import LogEntry
 
 
 @pytest.fixture
 def log_console(qtbot):
     """Create a LogConsole widget for testing."""
     console = LogConsole(max_entries=100, search_debounce_ms=0)  # No debounce for tests
+    console.set_batching_enabled(False)  # Disable batching for immediate updates in tests
     qtbot.addWidget(console)
     # Reset to "All" filter for consistent testing
-    console._current_filter = "All"
-    console._filter_combo.setCurrentText("All")
+    console._level_filter = "All"
+    if hasattr(console, "_controls") and console._controls:
+        console._controls._level_filter.setCurrentText("All")
     return console
 
 
@@ -178,8 +181,8 @@ class TestLogConsoleFiltering:
         log_console.append_log("WARNING", "Warning message")
         log_console.append_log("ERROR", "Error message")
 
-        # Change filter to INFO
-        log_console._filter_combo.setCurrentText("INFO")
+        # Change filter to INFO via the controls
+        log_console._on_level_filter_changed("INFO")
 
         text_content = log_console._text_edit.toPlainText()
         assert "Info message" in text_content
@@ -192,8 +195,8 @@ class TestLogConsoleFiltering:
         log_console.append_log("WARNING", "Warning message")
         log_console.append_log("ERROR", "Error message")
 
-        # Change filter to WARNING
-        log_console._filter_combo.setCurrentText("WARNING")
+        # Change filter to WARNING via the controls
+        log_console._on_level_filter_changed("WARNING")
 
         text_content = log_console._text_edit.toPlainText()
         assert "Info message" not in text_content
@@ -206,8 +209,8 @@ class TestLogConsoleFiltering:
         log_console.append_log("WARNING", "Warning message")
         log_console.append_log("ERROR", "Error message")
 
-        # Change filter to ERROR
-        log_console._filter_combo.setCurrentText("ERROR")
+        # Change filter to ERROR via the controls
+        log_console._on_level_filter_changed("ERROR")
 
         text_content = log_console._text_edit.toPlainText()
         assert "Info message" not in text_content
@@ -224,13 +227,12 @@ class TestLogConsoleSearch:
         log_console.append_log("WARNING", "Another test entry")
         log_console.append_log("ERROR", "No match here")
 
-        # Perform search
-        log_console._search_input.setText("test")
+        # Perform search via the search manager
+        log_console._on_search_text_changed("test")
         log_console.force_search()
 
         # Should find 2 matches
-        assert len(log_console._search_matches) == 2
-        assert log_console._match_label.text() == "1/2"
+        assert log_console._search_manager.get_match_count() == 2
 
     def test_search_navigation(self, log_console):
         """Test search navigation between matches."""

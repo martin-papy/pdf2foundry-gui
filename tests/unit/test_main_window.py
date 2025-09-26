@@ -111,10 +111,10 @@ class TestMainWindowFileHandling:
         # Check status label was updated
         assert "Selected: test_document.pdf" in window.status_label.text()
 
-        # Check that success styling was applied (green background)
+        # Check that success styling was applied (accessible colors)
         style = window.status_label.styleSheet()
-        assert "#d4edda" in style  # Success background color
-        assert "#155724" in style  # Success text color
+        assert "#f8f9fa" in style  # Success background color (accessible)
+        assert "#198754" in style  # Success text color (accessible)
 
     def test_on_file_rejected(self, qtbot):
         """Test file rejection handling."""

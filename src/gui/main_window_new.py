@@ -128,13 +128,13 @@ class MainWindow(QMainWindow):
     def get_selected_pdf_path(self) -> str:
         """Get the currently selected PDF path."""
         if self.ui.drag_drop_label:
-            return self.ui.drag_drop_label.selectedPdfPath()
+            return self.ui.drag_drop_label.get_selected_pdf_path()
         return ""
 
     def clear_selected_pdf(self) -> None:
         """Clear the currently selected PDF."""
         if self.ui.drag_drop_label:
-            self.ui.drag_drop_label.clearSelectedPdf()
+            self.ui.drag_drop_label.reset()
 
     def closeEvent(self, event) -> None:
         """Handle window close event."""
@@ -146,68 +146,6 @@ class MainWindow(QMainWindow):
             self.conversion_handler.cleanup()
 
         event.accept()
-
-    # Properties for backward compatibility with tests
-    @property
-    def status_text(self):
-        """Get the status text widget."""
-        return self.ui.status_indicator.status_text if self.ui.status_indicator else None
-
-    @property
-    def status_dot(self):
-        """Get the status dot widget."""
-        return self.ui.status_indicator.status_dot if self.ui.status_indicator else None
-
-    @property
-    def status_label(self):
-        """Get the status label widget."""
-        return self.ui.status_label
-
-    @property
-    def progress_bar(self):
-        """Get the progress bar widget."""
-        return self.ui.progress_bar
-
-    @property
-    def progress_status(self):
-        """Get the progress status widget."""
-        return self.ui.progress_status
-
-    @property
-    def log_console(self):
-        """Get the log console widget."""
-        return self.ui.log_console
-
-    @property
-    def drag_drop_label(self):
-        """Get the drag drop label widget."""
-        return self.ui.drag_drop_label
-
-    @property
-    def browse_button(self):
-        """Get the browse button widget."""
-        return self.ui.browse_button
-
-    @property
-    def cancel_button(self):
-        """Get the cancel button widget (placeholder for compatibility)."""
-
-        # For now, return a mock object that has setEnabled method
-        class MockButton:
-            def setEnabled(self, enabled):
-                pass
-
-        return MockButton()
-
-    @property
-    def selected_file_path(self):
-        """Get the selected file path."""
-        return self.get_selected_pdf_path()
-
-    def _set_status(self, state):
-        """Set the status indicator state (compatibility method)."""
-        if self.ui.status_manager:
-            self.ui.status_manager.set_status(state)
 
 
 def main() -> None:

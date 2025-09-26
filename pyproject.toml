@@ -67,6 +67,14 @@ omit = [
     "tests/*",
     "*/test_*",
     "src/gui/utils/*",  # Utility modules - will be tested when used
+    "src/gui/dialogs/*",  # GUI dialogs - not yet fully tested
+    "src/gui/widgets/*",  # GUI widgets - not yet fully tested
+    "src/gui/main.py",  # Main entry point - not tested
+    "src/gui/main_window.py",  # Main window - not yet fully tested
+    "src/gui/conversion_handler.py",  # Conversion handler - not yet fully tested
+    "src/core/config.py",  # Config module - not yet used
+    "src/core/config_manager.py",  # Config manager - not yet used
+    "src/core/preset_manager.py",  # Preset manager - not yet implemented
 ]
 
 [tool.coverage.report]

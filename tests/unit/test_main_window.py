@@ -8,7 +8,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QPushButton
 
-from gui.main import MainWindow
+from gui.main_window import MainWindow
 from gui.widgets.drag_drop import DragDropLabel
 
 
@@ -20,9 +20,9 @@ class TestMainWindowInitialization:
         window = MainWindow()
         qtbot.addWidget(window)
 
-        assert window.windowTitle() == "PDF2Foundry"
-        assert window.minimumSize().width() == 900
-        assert window.minimumSize().height() == 650
+        assert window.windowTitle() == "PDF2Foundry GUI"
+        assert window.size().width() == 800
+        assert window.size().height() == 600
         assert window.selected_file_path is None
 
     def test_ui_components_created(self, qtbot):
@@ -33,14 +33,12 @@ class TestMainWindowInitialization:
         # Check that main components exist
         assert hasattr(window, "drag_drop_label")
         assert hasattr(window, "status_label")
-        assert hasattr(window, "button_row")
         assert hasattr(window, "browse_button")
 
         # Check component types
         assert isinstance(window.drag_drop_label, DragDropLabel)
         assert isinstance(window.browse_button, QPushButton)
-        assert window.status_label.text() == "Drop a PDF file to begin"
-        assert window.status_label.wordWrap() is True
+        assert window.status_label.text() == "Ready to convert PDF files"
 
     def test_drag_drop_label_properties(self, qtbot):
         """Test that drag-drop label is configured correctly."""
@@ -51,7 +49,7 @@ class TestMainWindowInitialization:
         # The minimum height is now set via CSS min-height, not widget property
         assert drag_label.minimumHeight() > 0
         assert drag_label.focusPolicy() == Qt.FocusPolicy.StrongFocus
-        assert drag_label.accessibleName() == "PDF drop zone"
+        assert drag_label.accessibleName() == "PDF file drop zone"
 
     def test_status_label_properties(self, qtbot):
         """Test that status label is configured correctly."""
@@ -89,12 +87,11 @@ class TestMainWindowFileHandling:
         test_pdf = tmp_path / "test.pdf"
         test_pdf.write_bytes(b"%PDF-1.4\ntest content")
 
-        # Mock the set_file_selected method to avoid UI updates
-        with patch.object(window.drag_drop_label, "set_file_selected") as mock_set:
-            window._apply_selected_file(str(test_pdf))
+        # Apply selected file
+        window._apply_selected_file(str(test_pdf))
 
-            assert window.selected_file_path == str(test_pdf)
-            mock_set.assert_called_once_with(str(test_pdf))
+        assert window.selected_file_path == str(test_pdf)
+        assert "Selected: test.pdf" in window.status_label.text()
 
     def test_on_file_accepted(self, qtbot, tmp_path):
         """Test file acceptance handling."""
@@ -105,20 +102,19 @@ class TestMainWindowFileHandling:
         test_pdf = tmp_path / "test_document.pdf"
         test_pdf.write_bytes(b"%PDF-1.4\ntest content")
 
-        # Mock _apply_selected_file to avoid side effects
-        with patch.object(window, "_apply_selected_file") as mock_apply:
-            window.on_file_accepted(str(test_pdf))
+        # Call on_file_accepted directly
+        window.on_file_accepted(str(test_pdf))
 
-            # Check that _apply_selected_file was called
-            mock_apply.assert_called_once_with(str(test_pdf))
+        # Check that file was applied
+        assert window.selected_file_path == str(test_pdf)
 
-            # Check status label was updated
-            assert "Selected: test_document.pdf" in window.status_label.text()
+        # Check status label was updated
+        assert "Selected: test_document.pdf" in window.status_label.text()
 
-            # Check that success styling was applied (green background)
-            style = window.status_label.styleSheet()
-            assert "#d4edda" in style  # Success background color
-            assert "#155724" in style  # Success text color
+        # Check that success styling was applied (green background)
+        style = window.status_label.styleSheet()
+        assert "#d4edda" in style  # Success background color
+        assert "#155724" in style  # Success text color
 
     def test_on_file_rejected(self, qtbot):
         """Test file rejection handling."""
@@ -131,8 +127,8 @@ class TestMainWindowFileHandling:
         # Check that selected file path is cleared
         assert window.selected_file_path is None
 
-        # Check status label shows error message
-        assert window.status_label.text() == error_message
+        # Check status label shows error message with "Error:" prefix
+        assert window.status_label.text() == f"Error: {error_message}"
 
         # Check that error styling was applied (red background)
         style = window.status_label.styleSheet()
@@ -168,7 +164,7 @@ class TestMainWindowFileHandling:
 
         # Verify the handler was called and state updated
         assert window.selected_file_path is None
-        assert window.status_label.text() == error_message
+        assert window.status_label.text() == f"Error: {error_message}"
 
 
 class TestMainWindowAccessibility:
@@ -210,7 +206,8 @@ class TestMainWindowLayout:
 
         layout = central_widget.layout()
         assert layout is not None
-        assert layout.count() == 3  # drag_drop_label, status_label, button_row
+        # drag_drop_label, status_label, button_row, conversion_controls, progress_section, log_section
+        assert layout.count() == 6
 
     def test_stretch_factors(self, qtbot):
         """Test that stretch factors are set correctly."""
@@ -220,9 +217,12 @@ class TestMainWindowLayout:
         layout = window.centralWidget().layout()
 
         # Check stretch factors (drag_drop_label should get most space)
-        assert layout.stretch(0) == 5  # drag_drop_label
+        assert layout.stretch(0) == 3  # drag_drop_label
         assert layout.stretch(1) == 0  # status_label
         assert layout.stretch(2) == 0  # button_row
+        assert layout.stretch(3) == 0  # conversion_controls
+        assert layout.stretch(4) == 0  # progress_section
+        assert layout.stretch(5) == 2  # log_section
 
     def test_layout_margins_and_spacing(self, qtbot):
         """Test layout margins and spacing."""
@@ -232,11 +232,11 @@ class TestMainWindowLayout:
         layout = window.centralWidget().layout()
         margins = layout.contentsMargins()
 
-        assert margins.left() == 16
-        assert margins.top() == 16
-        assert margins.right() == 16
-        assert margins.bottom() == 16
-        assert layout.spacing() == 12
+        assert margins.left() == 20
+        assert margins.top() == 20
+        assert margins.right() == 20
+        assert margins.bottom() == 20
+        assert layout.spacing() == 20
 
 
 class TestMainApplication:

@@ -2,7 +2,7 @@
 Tests for MainWindow integration API methods.
 """
 
-from gui.main import MainWindow
+from gui.main_window import MainWindow
 
 
 class TestMainWindowIntegrationAPI:
@@ -84,7 +84,7 @@ class TestMainWindowIntegrationAPI:
 
         # Verify state was cleared
         assert window.selected_file_path is None
-        assert window.status_label.text() == "Drop a PDF file to begin"
+        assert window.status_label.text() == "Ready to convert PDF files"
 
     def test_browse_button_tooltip_enhanced(self, qtbot):
         """Test that Browse button has enhanced tooltip."""

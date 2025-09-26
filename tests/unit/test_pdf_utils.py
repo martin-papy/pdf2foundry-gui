@@ -152,6 +152,18 @@ class TestExtractLocalPathsFromMimedata:
         assert len(paths) == 1
         assert paths[0] == pdf_file.resolve()
 
+    def test_invalid_url_handling(self):
+        """Test that invalid URLs are handled gracefully."""
+        # Create QMimeData with an invalid URL that will cause OSError/ValueError
+        mime = QMimeData()
+        # Create a malformed URL that should trigger the exception handler
+        invalid_url = QUrl("file:///invalid\x00path/test.pdf")
+        mime.setUrls([invalid_url])
+
+        # Should not raise an exception and return empty list
+        paths = extract_local_paths_from_mimedata(mime)
+        assert len(paths) == 0
+
 
 class TestIsPdfFile:
     """Test is_pdf_file function."""

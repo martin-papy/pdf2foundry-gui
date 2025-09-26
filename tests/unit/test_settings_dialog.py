@@ -50,14 +50,32 @@ class TestSettingsDialog:
         assert apply_button is not None
         assert not apply_button.isEnabled()
 
-    def test_button_signals_connected(self, qtbot):
+    def test_button_signals_connected(self, qtbot, tmp_path, monkeypatch):
         """Test that button signals are properly connected."""
+        # Mock QSettings to ensure clean state
+        settings_file = tmp_path / "test_signals.ini"
+
+        from PySide6.QtCore import QSettings as OriginalQSettings
+
+        class MockQSettings(OriginalQSettings):
+            def __init__(self):
+                super().__init__(str(settings_file), OriginalQSettings.Format.IniFormat)
+
+        monkeypatch.setattr("PySide6.QtCore.QSettings", MockQSettings)
+        monkeypatch.setattr("core.config_manager.QSettings", MockQSettings)
+
         dialog = SettingsDialog()
         qtbot.addWidget(dialog)
+
+        # Test accepted signal - this should work because onAccept calls self.accept()
         with qtbot.waitSignal(dialog.accepted, timeout=1000):
             dialog.button_box.accepted.emit()
-        with qtbot.waitSignal(dialog.rejected, timeout=1000):
-            dialog.button_box.rejected.emit()
+
+        # Create a new dialog for the rejected test since the first one is now closed
+        dialog2 = SettingsDialog()
+        qtbot.addWidget(dialog2)
+        with qtbot.waitSignal(dialog2.rejected, timeout=1000):
+            dialog2.button_box.rejected.emit()
 
     def test_dialog_size_and_modality(self, qtbot):
         """Test dialog size and modality settings."""
@@ -79,8 +97,20 @@ class TestSettingsDialog:
         assert dialog.conversion_tab.accessibleName() == "Conversion settings"
         assert dialog.debug_tab.accessibleName() == "Debug settings"
 
-    def test_stub_methods_exist(self, qtbot):
+    def test_stub_methods_exist(self, qtbot, tmp_path, monkeypatch):
         """Test that all required stub methods exist and are callable."""
+        # Mock QSettings to ensure clean state
+        settings_file = tmp_path / "test_stub_methods.ini"
+
+        from PySide6.QtCore import QSettings as OriginalQSettings
+
+        class MockQSettings(OriginalQSettings):
+            def __init__(self):
+                super().__init__(str(settings_file), OriginalQSettings.Format.IniFormat)
+
+        monkeypatch.setattr("PySide6.QtCore.QSettings", MockQSettings)
+        monkeypatch.setattr("core.config_manager.QSettings", MockQSettings)
+
         dialog = SettingsDialog()
         qtbot.addWidget(dialog)
         dialog.loadSettings()
@@ -105,8 +135,20 @@ class TestSettingsDialog:
         assert dialog.conversion_tab.layout() is not None
         assert dialog.debug_tab.layout() is not None
 
-    def test_general_tab_controls_exist(self, qtbot):
+    def test_general_tab_controls_exist(self, qtbot, tmp_path, monkeypatch):
         """Test that General tab contains all expected controls."""
+        # Mock QSettings to ensure clean state
+        settings_file = tmp_path / "test_controls.ini"
+
+        from PySide6.QtCore import QSettings as OriginalQSettings
+
+        class MockQSettings(OriginalQSettings):
+            def __init__(self):
+                super().__init__(str(settings_file), OriginalQSettings.Format.IniFormat)
+
+        monkeypatch.setattr("PySide6.QtCore.QSettings", MockQSettings)
+        monkeypatch.setattr("core.config_manager.QSettings", MockQSettings)
+
         dialog = SettingsDialog()
         qtbot.addWidget(dialog)
         assert hasattr(dialog, "author_edit")
@@ -119,8 +161,20 @@ class TestSettingsDialog:
         assert dialog.pack_name_edit.text() == ""
         assert dialog.deterministic_ids_checkbox.isChecked()
 
-    def test_general_tab_tooltips(self, qtbot):
+    def test_general_tab_tooltips(self, qtbot, tmp_path, monkeypatch):
         """Test that General tab controls have proper tooltips."""
+        # Mock QSettings to ensure clean state
+        settings_file = tmp_path / "test_tooltips.ini"
+
+        from PySide6.QtCore import QSettings as OriginalQSettings
+
+        class MockQSettings(OriginalQSettings):
+            def __init__(self):
+                super().__init__(str(settings_file), OriginalQSettings.Format.IniFormat)
+
+        monkeypatch.setattr("PySide6.QtCore.QSettings", MockQSettings)
+        monkeypatch.setattr("core.config_manager.QSettings", MockQSettings)
+
         dialog = SettingsDialog()
         qtbot.addWidget(dialog)
         assert dialog.author_edit.toolTip() == "Author metadata for module.json."
@@ -129,8 +183,20 @@ class TestSettingsDialog:
         assert dialog.output_dir_selector.toolTip() == "Where the module will be written."
         assert dialog.deterministic_ids_checkbox.toolTip() == "Stable SHA1-based IDs to keep links consistent."
 
-    def test_general_tab_dirty_state_tracking(self, qtbot):
+    def test_general_tab_dirty_state_tracking(self, qtbot, tmp_path, monkeypatch):
         """Test that changing General tab controls marks dialog as dirty."""
+        # Mock QSettings to ensure clean state
+        settings_file = tmp_path / "test_dirty_state.ini"
+
+        from PySide6.QtCore import QSettings as OriginalQSettings
+
+        class MockQSettings(OriginalQSettings):
+            def __init__(self):
+                super().__init__(str(settings_file), OriginalQSettings.Format.IniFormat)
+
+        monkeypatch.setattr("PySide6.QtCore.QSettings", MockQSettings)
+        monkeypatch.setattr("core.config_manager.QSettings", MockQSettings)
+
         dialog = SettingsDialog()
         qtbot.addWidget(dialog)
         apply_button = dialog.button_box.button(dialog.button_box.StandardButton.Apply)
@@ -155,8 +221,20 @@ class TestSettingsDialog:
         assert dialog._dirty
         assert apply_button.isEnabled()
 
-    def test_general_tab_to_args_mapping(self, qtbot):
+    def test_general_tab_to_args_mapping(self, qtbot, tmp_path, monkeypatch):
         """Test that General tab controls map correctly to CLI arguments."""
+        # Mock QSettings to ensure clean state
+        settings_file = tmp_path / "test_args_mapping.ini"
+
+        from PySide6.QtCore import QSettings as OriginalQSettings
+
+        class MockQSettings(OriginalQSettings):
+            def __init__(self):
+                super().__init__(str(settings_file), OriginalQSettings.Format.IniFormat)
+
+        monkeypatch.setattr("PySide6.QtCore.QSettings", MockQSettings)
+        monkeypatch.setattr("core.config_manager.QSettings", MockQSettings)
+
         dialog = SettingsDialog()
         qtbot.addWidget(dialog)
 
@@ -211,8 +289,20 @@ class TestSettingsDialog:
         assert "--license" not in args
         assert "--pack-name" not in args
 
-    def test_conversion_tab_controls_exist(self, qtbot):
+    def test_conversion_tab_controls_exist(self, qtbot, tmp_path, monkeypatch):
         """Test that Conversion tab contains all expected controls."""
+        # Mock QSettings to ensure clean state
+        settings_file = tmp_path / "test_conversion_controls.ini"
+
+        from PySide6.QtCore import QSettings as OriginalQSettings
+
+        class MockQSettings(OriginalQSettings):
+            def __init__(self):
+                super().__init__(str(settings_file), OriginalQSettings.Format.IniFormat)
+
+        monkeypatch.setattr("PySide6.QtCore.QSettings", MockQSettings)
+        monkeypatch.setattr("core.config_manager.QSettings", MockQSettings)
+
         dialog = SettingsDialog()
         qtbot.addWidget(dialog)
 
@@ -232,8 +322,20 @@ class TestSettingsDialog:
         assert not dialog.vlm_repo_edit.isEnabled()  # Disabled when picture descriptions OFF
         assert dialog.pages_edit.text() == ""
 
-    def test_conversion_tab_tooltips(self, qtbot):
+    def test_conversion_tab_tooltips(self, qtbot, tmp_path, monkeypatch):
         """Test that Conversion tab controls have proper tooltips."""
+        # Mock QSettings to ensure clean state
+        settings_file = tmp_path / "test_conversion_tooltips.ini"
+
+        from PySide6.QtCore import QSettings as OriginalQSettings
+
+        class MockQSettings(OriginalQSettings):
+            def __init__(self):
+                super().__init__(str(settings_file), OriginalQSettings.Format.IniFormat)
+
+        monkeypatch.setattr("PySide6.QtCore.QSettings", MockQSettings)
+        monkeypatch.setattr("core.config_manager.QSettings", MockQSettings)
+
         dialog = SettingsDialog()
         qtbot.addWidget(dialog)
 
@@ -244,8 +346,20 @@ class TestSettingsDialog:
         assert "Hugging Face" in dialog.vlm_repo_edit.toolTip()
         assert "Page list" in dialog.pages_edit.toolTip()
 
-    def test_picture_descriptions_vlm_dependency(self, qtbot):
+    def test_picture_descriptions_vlm_dependency(self, qtbot, tmp_path, monkeypatch):
         """Test that VLM field is enabled/disabled based on picture descriptions checkbox."""
+        # Mock QSettings to ensure clean state
+        settings_file = tmp_path / "test_vlm_dependency.ini"
+
+        from PySide6.QtCore import QSettings as OriginalQSettings
+
+        class MockQSettings(OriginalQSettings):
+            def __init__(self):
+                super().__init__(str(settings_file), OriginalQSettings.Format.IniFormat)
+
+        monkeypatch.setattr("PySide6.QtCore.QSettings", MockQSettings)
+        monkeypatch.setattr("core.config_manager.QSettings", MockQSettings)
+
         dialog = SettingsDialog()
         qtbot.addWidget(dialog)
 
@@ -260,8 +374,20 @@ class TestSettingsDialog:
         dialog.picture_descriptions_checkbox.setChecked(False)
         assert not dialog.vlm_repo_edit.isEnabled()
 
-    def test_conversion_tab_to_args_mapping(self, qtbot):
+    def test_conversion_tab_to_args_mapping(self, qtbot, tmp_path, monkeypatch):
         """Test that Conversion tab controls map correctly to CLI arguments."""
+        # Mock QSettings to ensure clean state
+        settings_file = tmp_path / "test_conversion_args.ini"
+
+        from PySide6.QtCore import QSettings as OriginalQSettings
+
+        class MockQSettings(OriginalQSettings):
+            def __init__(self):
+                super().__init__(str(settings_file), OriginalQSettings.Format.IniFormat)
+
+        monkeypatch.setattr("PySide6.QtCore.QSettings", MockQSettings)
+        monkeypatch.setattr("core.config_manager.QSettings", MockQSettings)
+
         dialog = SettingsDialog()
         qtbot.addWidget(dialog)
 
@@ -285,8 +411,20 @@ class TestSettingsDialog:
         assert args["--vlm-repo-id"] == "microsoft/Florence-2-base"
         assert args["--pages"] == "1,5-10,15"
 
-    def test_conversion_tab_default_values_not_in_args(self, qtbot):
+    def test_conversion_tab_default_values_not_in_args(self, qtbot, tmp_path, monkeypatch):
         """Test that default values are not included in CLI arguments."""
+        # Mock QSettings to ensure clean state
+        settings_file = tmp_path / "test_default_values.ini"
+
+        from PySide6.QtCore import QSettings as OriginalQSettings
+
+        class MockQSettings(OriginalQSettings):
+            def __init__(self):
+                super().__init__(str(settings_file), OriginalQSettings.Format.IniFormat)
+
+        monkeypatch.setattr("PySide6.QtCore.QSettings", MockQSettings)
+        monkeypatch.setattr("core.config_manager.QSettings", MockQSettings)
+
         dialog = SettingsDialog()
         qtbot.addWidget(dialog)
 
@@ -325,8 +463,20 @@ class TestSettingsDialog:
         assert dialog.vlm_repo_edit.text() == "Salesforce/blip-image-captioning-base"
         assert dialog.pages_edit.text() == "2,4-8"
 
-    def test_conversion_tab_dirty_state_tracking(self, qtbot):
+    def test_conversion_tab_dirty_state_tracking(self, qtbot, tmp_path, monkeypatch):
         """Test that changing Conversion tab controls marks dialog as dirty."""
+        # Mock QSettings to ensure clean state
+        settings_file = tmp_path / "test_conversion_dirty.ini"
+
+        from PySide6.QtCore import QSettings as OriginalQSettings
+
+        class MockQSettings(OriginalQSettings):
+            def __init__(self):
+                super().__init__(str(settings_file), OriginalQSettings.Format.IniFormat)
+
+        monkeypatch.setattr("PySide6.QtCore.QSettings", MockQSettings)
+        monkeypatch.setattr("core.config_manager.QSettings", MockQSettings)
+
         dialog = SettingsDialog()
         qtbot.addWidget(dialog)
 
@@ -358,8 +508,20 @@ class TestSettingsDialog:
             assert dialog._dirty, f"Control {control} did not mark dialog as dirty"
             assert apply_button.isEnabled(), f"Control {control} did not enable Apply button"
 
-    def test_debug_tab_controls_exist(self, qtbot):
+    def test_debug_tab_controls_exist(self, qtbot, tmp_path, monkeypatch):
         """Test that Debug tab contains all expected controls."""
+        # Mock QSettings to ensure clean state
+        settings_file = tmp_path / "test_debug_controls.ini"
+
+        from PySide6.QtCore import QSettings as OriginalQSettings
+
+        class MockQSettings(OriginalQSettings):
+            def __init__(self):
+                super().__init__(str(settings_file), OriginalQSettings.Format.IniFormat)
+
+        monkeypatch.setattr("PySide6.QtCore.QSettings", MockQSettings)
+        monkeypatch.setattr("core.config_manager.QSettings", MockQSettings)
+
         dialog = SettingsDialog()
         qtbot.addWidget(dialog)
         assert hasattr(dialog, "verbose_checkbox")
@@ -388,8 +550,20 @@ class TestSettingsDialog:
         assert "Browse for log file" in dialog.browse_log_file_button.toolTip()
         assert "diagnostic information" in dialog.export_debug_button.toolTip()
 
-    def test_debug_tab_dirty_state_tracking(self, qtbot):
+    def test_debug_tab_dirty_state_tracking(self, qtbot, tmp_path, monkeypatch):
         """Test that changing Debug tab controls marks dialog as dirty."""
+        # Mock QSettings to ensure clean state
+        settings_file = tmp_path / "test_debug_dirty.ini"
+
+        from PySide6.QtCore import QSettings as OriginalQSettings
+
+        class MockQSettings(OriginalQSettings):
+            def __init__(self):
+                super().__init__(str(settings_file), OriginalQSettings.Format.IniFormat)
+
+        monkeypatch.setattr("PySide6.QtCore.QSettings", MockQSettings)
+        monkeypatch.setattr("core.config_manager.QSettings", MockQSettings)
+
         dialog = SettingsDialog()
         qtbot.addWidget(dialog)
         apply_button = dialog.button_box.button(dialog.button_box.StandardButton.Apply)
@@ -407,8 +581,20 @@ class TestSettingsDialog:
             assert dialog._dirty, f"Control {control} did not mark dialog as dirty"
             assert apply_button.isEnabled(), f"Control {control} did not enable Apply button"
 
-    def test_debug_tab_to_args_mapping(self, qtbot):
+    def test_debug_tab_to_args_mapping(self, qtbot, tmp_path, monkeypatch):
         """Test that Debug tab controls map correctly to CLI arguments."""
+        # Mock QSettings to ensure clean state
+        settings_file = tmp_path / "test_debug_args.ini"
+
+        from PySide6.QtCore import QSettings as OriginalQSettings
+
+        class MockQSettings(OriginalQSettings):
+            def __init__(self):
+                super().__init__(str(settings_file), OriginalQSettings.Format.IniFormat)
+
+        monkeypatch.setattr("PySide6.QtCore.QSettings", MockQSettings)
+        monkeypatch.setattr("core.config_manager.QSettings", MockQSettings)
+
         dialog = SettingsDialog()
         qtbot.addWidget(dialog)
         dialog.verbose_checkbox.setChecked(True)
@@ -482,8 +668,20 @@ class TestSettingsDialog:
         assert dialog.log_file_edit.text() == "/tmp/test.log"
         assert dialog._dirty
 
-    def test_export_debug_handler(self, qtbot, monkeypatch):
+    def test_export_debug_handler(self, qtbot, tmp_path, monkeypatch):
         """Test the export debug bundle button handler."""
+        # Mock QSettings to ensure clean state
+        settings_file = tmp_path / "test_export_debug.ini"
+
+        from PySide6.QtCore import QSettings as OriginalQSettings
+
+        class MockQSettings(OriginalQSettings):
+            def __init__(self):
+                super().__init__(str(settings_file), OriginalQSettings.Format.IniFormat)
+
+        monkeypatch.setattr("PySide6.QtCore.QSettings", MockQSettings)
+        monkeypatch.setattr("core.config_manager.QSettings", MockQSettings)
+
         dialog = SettingsDialog()
         qtbot.addWidget(dialog)
 
@@ -561,8 +759,20 @@ class TestSettingsDialog:
         assert dialog._parse_pages("abc") is None
         assert dialog._parse_pages("1,2,") is None
 
-    def test_vlm_field_dependency_validation(self, qtbot):
+    def test_vlm_field_dependency_validation(self, qtbot, tmp_path, monkeypatch):
         """Test VLM field validation based on picture descriptions checkbox."""
+        # Mock QSettings to ensure clean state
+        settings_file = tmp_path / "test_vlm_validation.ini"
+
+        from PySide6.QtCore import QSettings as OriginalQSettings
+
+        class MockQSettings(OriginalQSettings):
+            def __init__(self):
+                super().__init__(str(settings_file), OriginalQSettings.Format.IniFormat)
+
+        monkeypatch.setattr("PySide6.QtCore.QSettings", MockQSettings)
+        monkeypatch.setattr("core.config_manager.QSettings", MockQSettings)
+
         dialog = SettingsDialog()
         qtbot.addWidget(dialog)
 
@@ -582,8 +792,20 @@ class TestSettingsDialog:
         assert dialog.validateAll()
         assert not dialog.vlm_repo_edit.property("hasError")
 
-    def test_button_states_with_validation(self, qtbot):
+    def test_button_states_with_validation(self, qtbot, tmp_path, monkeypatch):
         """Test that OK/Apply buttons behave correctly with validation."""
+        # Mock QSettings to ensure clean state
+        settings_file = tmp_path / "test_button_validation.ini"
+
+        from PySide6.QtCore import QSettings as OriginalQSettings
+
+        class MockQSettings(OriginalQSettings):
+            def __init__(self):
+                super().__init__(str(settings_file), OriginalQSettings.Format.IniFormat)
+
+        monkeypatch.setattr("PySide6.QtCore.QSettings", MockQSettings)
+        monkeypatch.setattr("core.config_manager.QSettings", MockQSettings)
+
         dialog = SettingsDialog()
         qtbot.addWidget(dialog)
 
@@ -632,8 +854,20 @@ class TestSettingsDialog:
         assert dialog.log_level_combo.currentText() == "INFO"
         assert dialog._dirty
 
-    def test_enhanced_toargs_validation(self, qtbot):
+    def test_enhanced_toargs_validation(self, qtbot, tmp_path, monkeypatch):
         """Test that toArgs only returns valid arguments."""
+        # Mock QSettings to ensure clean state
+        settings_file = tmp_path / "test_enhanced_toargs.ini"
+
+        from PySide6.QtCore import QSettings as OriginalQSettings
+
+        class MockQSettings(OriginalQSettings):
+            def __init__(self):
+                super().__init__(str(settings_file), OriginalQSettings.Format.IniFormat)
+
+        monkeypatch.setattr("PySide6.QtCore.QSettings", MockQSettings)
+        monkeypatch.setattr("core.config_manager.QSettings", MockQSettings)
+
         dialog = SettingsDialog()
         qtbot.addWidget(dialog)
 
@@ -679,8 +913,20 @@ class TestSettingsDialog:
 
         assert parsed == expected
 
-    def test_pages_normalization(self, qtbot):
+    def test_pages_normalization(self, qtbot, tmp_path, monkeypatch):
         """Test that pages are normalized in toArgs and fromArgs."""
+        # Mock QSettings to ensure clean state
+        settings_file = tmp_path / "test_pages_normalization.ini"
+
+        from PySide6.QtCore import QSettings as OriginalQSettings
+
+        class MockQSettings(OriginalQSettings):
+            def __init__(self):
+                super().__init__(str(settings_file), OriginalQSettings.Format.IniFormat)
+
+        monkeypatch.setattr("PySide6.QtCore.QSettings", MockQSettings)
+        monkeypatch.setattr("core.config_manager.QSettings", MockQSettings)
+
         dialog = SettingsDialog()
         qtbot.addWidget(dialog)
 

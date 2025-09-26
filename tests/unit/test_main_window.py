@@ -206,8 +206,8 @@ class TestMainWindowLayout:
 
         layout = central_widget.layout()
         assert layout is not None
-        # drag_drop_label, status_label, button_row, conversion_controls, progress_section, log_section
-        assert layout.count() == 6
+        # Current layout: header_widget, main_splitter
+        assert layout.count() == 2
 
     def test_stretch_factors(self, qtbot):
         """Test that stretch factors are set correctly."""
@@ -216,13 +216,9 @@ class TestMainWindowLayout:
 
         layout = window.centralWidget().layout()
 
-        # Check stretch factors (drag_drop_label should get most space)
-        assert layout.stretch(0) == 3  # drag_drop_label
-        assert layout.stretch(1) == 0  # status_label
-        assert layout.stretch(2) == 0  # button_row
-        assert layout.stretch(3) == 0  # conversion_controls
-        assert layout.stretch(4) == 0  # progress_section
-        assert layout.stretch(5) == 2  # log_section
+        # Current layout: header_widget (no stretch), main_splitter (no explicit stretch)
+        assert layout.stretch(0) == 0  # header_widget
+        assert layout.stretch(1) == 0  # main_splitter (default stretch is 0)
 
     def test_layout_margins_and_spacing(self, qtbot):
         """Test layout margins and spacing."""

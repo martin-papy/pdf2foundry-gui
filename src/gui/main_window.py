@@ -8,14 +8,24 @@ user interface for the application.
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import QStandardPaths
-from PySide6.QtGui import QCloseEvent
-from PySide6.QtWidgets import QApplication, QFileDialog, QLabel, QLineEdit, QMainWindow, QProgressBar, QPushButton
+from PySide6.QtCore import QStandardPaths, Qt, QUrl
+from PySide6.QtGui import QCloseEvent, QDesktopServices
+from PySide6.QtWidgets import (
+    QApplication,
+    QFileDialog,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QMessageBox,
+    QProgressBar,
+    QPushButton,
+)
 
 from core.config_manager import ConfigManager
 from core.gui_mapping import GuiConfigMapper
 from core.pdf_utils import is_pdf_file
 from gui.conversion_handler import ConversionHandler
+from gui.dialogs.settings import SettingsDialog
 from gui.utils.styling import apply_status_style
 from gui.widgets.drag_drop import DragDropLabel
 from gui.widgets.log_console import LogConsole
@@ -50,6 +60,9 @@ class MainWindow(QMainWindow):
         # Connect signals
         self._connect_signals()
 
+        # Load output directory from config
+        self._load_output_directory()
+
         # Set initial state
         self._reset_ui_state()
 
@@ -63,6 +76,17 @@ class MainWindow(QMainWindow):
         self.ui.drag_drop_label.fileRejected.connect(self.on_file_rejected)
         self.ui.drag_drop_label.pdfCleared.connect(self.on_pdf_cleared)
         self.ui.browse_button.clicked.connect(self.on_browse_clicked)
+
+        # Header button signals
+        if self.ui.help_button:
+            self.ui.help_button.clicked.connect(self.on_help_clicked)
+        if self.ui.settings_button:
+            self.ui.settings_button.clicked.connect(self.on_settings_clicked)
+
+        # Output directory selector signals
+        if self.ui.output_dir_selector:
+            self.ui.output_dir_selector.pathChanged.connect(self.on_output_dir_changed)
+            self.ui.output_dir_selector.validityChanged.connect(self.on_output_dir_validity_changed)
 
     def _reset_ui_state(self) -> None:
         """Reset UI to initial state."""
@@ -84,6 +108,9 @@ class MainWindow(QMainWindow):
         if self.ui.progress_status:
             self.ui.progress_status.setVisible(False)
             self.ui.progress_status.clear()
+
+        # Update convert button state
+        self._update_convert_button_state()
 
     def on_browse_clicked(self) -> None:
         """Handle browse button click."""
@@ -144,7 +171,92 @@ class MainWindow(QMainWindow):
         if self.ui.status_manager:
             self.ui.status_manager.reset_to_idle()
 
+        # Update convert button state based on both PDF selection and output directory validity
+        self._update_convert_button_state()
+
         logging.info(f"PDF file selected: {file_path}")
+
+    def on_help_clicked(self) -> None:
+        """Handle help button click."""
+        # Create About dialog
+        about_text = """
+        <h3>PDF2Foundry GUI</h3>
+        <p>A desktop application for converting PDF files to Foundry VTT modules.</p>
+        <p><b>Version:</b> 1.0.0</p>
+        <p><b>Links:</b></p>
+        <ul>
+        <li><a href="https://github.com/pdf2foundry/pdf2foundry">Documentation</a></li>
+        <li><a href="https://github.com/pdf2foundry/pdf2foundry/releases">Release Notes</a></li>
+        <li><a href="https://github.com/pdf2foundry/pdf2foundry/issues">Report Issue</a></li>
+        </ul>
+        """
+
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("About PDF2Foundry GUI")
+        msg_box.setTextFormat(Qt.TextFormat.RichText)
+        msg_box.setText(about_text)
+        msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+
+        # Handle link clicks
+        msg_box.setTextInteractionFlags(msg_box.textInteractionFlags() | Qt.TextInteractionFlag.TextSelectableByMouse)
+
+        # Connect link activation
+        def on_link_activated(link: str) -> None:
+            QDesktopServices.openUrl(QUrl(link))
+
+        # Note: QMessageBox doesn't directly support linkActivated, but we can handle it through the text
+        msg_box.exec()
+
+    def on_settings_clicked(self) -> None:
+        """Handle settings button click."""
+        settings_dialog = SettingsDialog(self)
+        if settings_dialog.exec() == SettingsDialog.DialogCode.Accepted:
+            # Settings were saved, refresh any settings-dependent UI
+            logging.info("Settings updated")
+            # Refresh output directory display from updated config
+            self._load_output_directory()
+
+    def _load_output_directory(self) -> None:
+        """Load output directory from config and update the UI."""
+        if not self.ui.output_dir_selector:
+            return
+
+        # Get output directory from config
+        output_dir = self.config_manager.get("output_dir", "")
+
+        if output_dir:
+            self.ui.output_dir_selector.set_path(output_dir)
+        # If no config value, the OutputDirectorySelector will use its default
+
+    def on_output_dir_changed(self, path: str) -> None:
+        """Handle output directory path changes."""
+        # Save to config manager
+        self.config_manager.set("output_dir", path)
+        logging.info(f"Output directory changed to: {path}")
+
+    def on_output_dir_validity_changed(self, is_valid: bool, error_message: str) -> None:
+        """Handle output directory validity changes."""
+        if not is_valid and error_message:
+            logging.warning(f"Output directory validation error: {error_message}")
+
+        # Update convert button state
+        self._update_convert_button_state()
+
+    def _update_convert_button_state(self) -> None:
+        """Update convert button enabled state based on PDF selection and output directory validity."""
+        if not self.ui.convert_button:
+            return
+
+        # Check if we have a valid PDF
+        has_pdf = bool(self.get_selected_pdf_path())
+
+        # Check if output directory is valid
+        output_dir_valid = True
+        if self.ui.output_dir_selector:
+            output_dir_valid = self.ui.output_dir_selector.is_valid()
+
+        # Enable convert button only if both conditions are met
+        self.ui.convert_button.setEnabled(has_pdf and output_dir_valid)
 
     def get_selected_pdf_path(self) -> str | None:
         """Get the currently selected PDF path."""

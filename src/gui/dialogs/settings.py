@@ -540,6 +540,7 @@ class SettingsDialog(QDialog):
         if self.validateAll():
             self.saveSettings()
             self.accept()
+        # Note: self.accept() automatically emits the accepted signal
 
     def onApply(self) -> None:
         """Handle Apply button click."""

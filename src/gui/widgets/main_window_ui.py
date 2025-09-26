@@ -8,7 +8,6 @@ separating layout concerns from business logic.
 from pathlib import Path
 
 from PySide6.QtCore import QSettings, QStandardPaths, Qt
-from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QFrame,
     QGroupBox,
@@ -19,15 +18,20 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QSizePolicy,
+    QSplitter,
     QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
 from gui.utils.styling import apply_status_style
+from gui.widgets.directory_selector import OutputDirectorySelector
 from gui.widgets.drag_drop import DragDropLabel
+from gui.widgets.keyboard_shortcuts import KeyboardShortcutsManager
+from gui.widgets.layout_components import LayoutComponentsManager
 from gui.widgets.log_console import LogConsole
 from gui.widgets.status_indicator import StatusIndicatorWidget, StatusManager
+from gui.widgets.window_properties import WindowPropertiesManager
 
 
 class MainWindowUI:
@@ -46,6 +50,11 @@ class MainWindowUI:
         """
         self.main_window = main_window
         self.central_widget: QWidget | None = None
+
+        # Initialize component managers
+        self.window_properties = WindowPropertiesManager(main_window)
+        self.layout_components = LayoutComponentsManager(main_window)
+        self.keyboard_shortcuts = KeyboardShortcutsManager(main_window)
         self.drag_drop_label: DragDropLabel | None = None
         self.browse_button: QPushButton | None = None
         self.status_label: QLabel | None = None
@@ -56,6 +65,15 @@ class MainWindowUI:
         self.log_toggle_button: QToolButton | None = None
         self.log_console: LogConsole | None = None
         self.log_panel: QFrame | None = None
+        self.main_splitter: QSplitter | None = None
+
+        # Header bar components
+        self.header_widget: QWidget | None = None
+        self.help_button: QToolButton | None = None
+        self.settings_button: QToolButton | None = None
+
+        # Output directory selector
+        self.output_dir_selector: OutputDirectorySelector | None = None
 
         # Module configuration fields
         self.module_id_input: QLineEdit | None = None
@@ -64,48 +82,71 @@ class MainWindowUI:
         # Action buttons
         self.convert_button: QPushButton | None = None
 
+        # Custom title bar (optional)
+        self.custom_title_bar_enabled: bool = False
+
     def setup_ui(self) -> None:
         """Set up the complete user interface."""
-        self._setup_window_properties()
+        self.window_properties.setup_window_properties()
         self._setup_central_widget()
-        self._setup_keyboard_shortcuts()
+        self.keyboard_shortcuts.setup_shortcuts(
+            browse_button=self.browse_button,
+            help_button=self.help_button,
+            settings_button=self.settings_button,
+            output_dir_selector=self.output_dir_selector,
+            log_toggle_button=self.log_toggle_button,
+        )
         self._setup_accessibility()
         self._load_ui_settings()
-
-    def _setup_window_properties(self) -> None:
-        """Set up basic window properties."""
-        self.main_window.setWindowTitle("PDF2Foundry GUI")
-        self.main_window.setMinimumSize(800, 600)
-        self.main_window.resize(800, 600)
 
     def _setup_central_widget(self) -> None:
         """Set up the central widget and main layout."""
         self.central_widget = QWidget()
         self.main_window.setCentralWidget(self.central_widget)
 
-        # Main layout
+        # Main layout - contains header and splitter
         main_layout = QVBoxLayout(self.central_widget)
         main_layout.setContentsMargins(20, 20, 20, 20)
         main_layout.setSpacing(20)
 
+        # Header bar
+        self.header_widget = self.layout_components.setup_header_bar(main_layout)
+        self.help_button = getattr(self.header_widget, "help_button", None)
+        self.settings_button = getattr(self.header_widget, "settings_button", None)
+
+        # Create main splitter (vertical)
+        self.main_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.main_splitter.setObjectName("mainSplitter")
+
+        # Create main content widget (top part of splitter)
+        main_content_widget = QWidget()
+        main_content_layout = QVBoxLayout(main_content_widget)
+        main_content_layout.setContentsMargins(0, 0, 0, 0)
+        main_content_layout.setSpacing(20)
+
+        # Output directory selector
+        self.output_dir_selector = self.layout_components.setup_output_directory_selector(main_content_layout)
+
         # File selection area
-        self._setup_file_selection_area(main_layout)
+        self.drag_drop_label = self.layout_components.setup_file_selection_area(main_content_layout)
 
         # Button and controls area
-        self._setup_button_controls_area(main_layout)
+        self._setup_button_controls_area(main_content_layout)
 
-        # Status and progress area
-        self._setup_status_progress_area(main_layout)
+        # Status area (without progress - progress will be above logs)
+        self._setup_status_area(main_content_layout)
 
-        # Log panel (collapsible)
-        self._setup_log_panel(main_layout)
+        # Add main content to splitter
+        self.main_splitter.addWidget(main_content_widget)
 
-    def _setup_file_selection_area(self, main_layout: QVBoxLayout) -> None:
-        """Set up the file selection area."""
-        # Drag and drop area
-        self.drag_drop_label = DragDropLabel()
-        self.drag_drop_label.setMinimumHeight(200)
-        main_layout.addWidget(self.drag_drop_label, 3)  # Give it more space
+        # Progress area - positioned above logs
+        self._setup_progress_area()
+
+        # Log panel (collapsible) - bottom part of splitter
+        self._setup_log_panel_with_splitter()
+
+        # Add splitter to main layout
+        main_layout.addWidget(self.main_splitter)
 
     def _setup_button_controls_area(self, main_layout: QVBoxLayout) -> None:
         """Set up the button and controls area (combines browse, module config, convert)."""
@@ -190,8 +231,8 @@ class MainWindowUI:
 
         controls_layout.addWidget(module_group)
 
-    def _setup_status_progress_area(self, main_layout: QVBoxLayout) -> None:
-        """Set up the status and progress area."""
+    def _setup_status_area(self, main_layout: QVBoxLayout) -> None:
+        """Set up the status area (without progress)."""
         # Status area
         status_layout = QHBoxLayout()
         status_layout.setSpacing(10)
@@ -216,39 +257,67 @@ class MainWindowUI:
 
         main_layout.addLayout(status_layout)
 
-        # Progress area
-        progress_layout = QVBoxLayout()
-        progress_layout.setSpacing(5)
+    def _setup_progress_area(self) -> None:
+        """Set up the progress area positioned above logs."""
+        if not self.main_splitter:
+            return
+
+        # Create progress container widget
+        progress_container = QWidget()
+        progress_container.setObjectName("progressContainer")
+        progress_container_layout = QVBoxLayout(progress_container)
+        progress_container_layout.setContentsMargins(0, 5, 0, 5)
+        progress_container_layout.setSpacing(5)
 
         # Progress bar
         self.progress_bar = QProgressBar()
+        self.progress_bar.setObjectName("progressBar")
+        self.progress_bar.setProperty("variant", "primary")  # For QSS theming
         self.progress_bar.setVisible(False)  # Hidden initially
         self.progress_bar.setAccessibleName("Conversion progress")
         self.progress_bar.setAccessibleDescription("Shows conversion progress percentage")
         self.progress_bar.setToolTip("Conversion progress")
+        self.progress_bar.setTextVisible(True)  # Show percentage text
+        self.progress_bar.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # Set fixed height and size policy to prevent layout jitter
-        self.progress_bar.setFixedHeight(20)
+        self.progress_bar.setFixedHeight(24)
         self.progress_bar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-        progress_layout.addWidget(self.progress_bar)
+        progress_container_layout.addWidget(self.progress_bar)
 
         # Progress status text
         self.progress_status = QLabel()
+        self.progress_status.setObjectName("progressStatus")
         self.progress_status.setVisible(False)  # Hidden initially
         self.progress_status.setAccessibleName("Progress status")
         self.progress_status.setAccessibleDescription("Detailed progress status message")
+        self.progress_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.progress_status.setStyleSheet("color: #666; font-size: 12px;")
 
         # Set fixed height and size policy to prevent layout jitter
         self.progress_status.setFixedHeight(16)
         self.progress_status.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-        progress_layout.addWidget(self.progress_status)
+        progress_container_layout.addWidget(self.progress_status)
 
-        main_layout.addLayout(progress_layout)
+        # Insert progress container between main content and log container
+        # The splitter should have: [main_content, progress_container, log_container]
+        if self.main_splitter.count() == 1:
+            # Add progress container before setting up log panel
+            self.main_splitter.addWidget(progress_container)
+            # Set stretch factors: main content can stretch, progress is fixed, logs can stretch
+            self.main_splitter.setStretchFactor(0, 1)  # Main content
+            self.main_splitter.setStretchFactor(1, 0)  # Progress (fixed)
 
-    def _setup_log_panel(self, main_layout: QVBoxLayout) -> None:
-        """Set up the collapsible log panel."""
+    def _setup_log_panel_with_splitter(self) -> None:
+        """Set up the collapsible log panel using splitter approach."""
+        # Create log panel container widget
+        log_container = QWidget()
+        log_container_layout = QVBoxLayout(log_container)
+        log_container_layout.setContentsMargins(0, 0, 0, 0)
+        log_container_layout.setSpacing(5)
+
         # Log panel header
         log_header_layout = QHBoxLayout()
         log_header_layout.setContentsMargins(0, 0, 0, 0)
@@ -263,7 +332,7 @@ class MainWindowUI:
         log_header_layout.addWidget(self.log_toggle_button)
 
         log_header_layout.addStretch()
-        main_layout.addLayout(log_header_layout)
+        log_container_layout.addLayout(log_header_layout)
 
         # Log panel frame
         self.log_panel = QFrame()
@@ -279,24 +348,20 @@ class MainWindowUI:
         self.log_console.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         log_panel_layout.addWidget(self.log_console)
 
-        main_layout.addWidget(self.log_panel, 2)  # Give it more stretch for log section
+        log_container_layout.addWidget(self.log_panel)
+
+        # Add log container to splitter
+        if self.main_splitter:
+            self.main_splitter.addWidget(log_container)
+            # Set initial splitter sizes: [main_content, progress_container, log_container]
+            # Main content gets most space, progress is minimal, logs get reasonable space
+            self.main_splitter.setSizes([600, 50, 250])
+            self.main_splitter.setStretchFactor(0, 1)  # Main content can stretch
+            self.main_splitter.setStretchFactor(1, 0)  # Progress container fixed
+            self.main_splitter.setStretchFactor(2, 0)  # Log panel fixed
 
         # Connect log toggle
-        self.log_toggle_button.toggled.connect(self._on_log_toggle)
-
-    def _setup_keyboard_shortcuts(self) -> None:
-        """Set up keyboard shortcuts."""
-        # Browse shortcut
-        browse_action = QAction(self.main_window)
-        browse_action.setShortcut(QKeySequence("Ctrl+O"))
-        browse_action.triggered.connect(lambda: self.browse_button.clicked.emit() if self.browse_button else None)
-        self.main_window.addAction(browse_action)
-
-        # Log panel toggle shortcut
-        log_toggle_action = QAction(self.main_window)
-        log_toggle_action.setShortcut(QKeySequence("Alt+L"))
-        log_toggle_action.triggered.connect(lambda: self.log_toggle_button.toggle() if self.log_toggle_button else None)
-        self.main_window.addAction(log_toggle_action)
+        self.log_toggle_button.toggled.connect(self._on_log_toggle_splitter)
 
     def _setup_accessibility(self) -> None:
         """Set up accessibility features."""
@@ -305,12 +370,18 @@ class MainWindowUI:
             and self.browse_button
             and self.module_id_input
             and self.module_title_input
+            and self.help_button
+            and self.settings_button
+            and self.output_dir_selector
             and self.log_toggle_button
         ):
             return
 
         # Set up tab order for keyboard navigation
         widgets = [
+            self.help_button,
+            self.settings_button,
+            self.output_dir_selector,
             self.drag_drop_label,
             self.browse_button,
             self.module_id_input,
@@ -328,39 +399,82 @@ class MainWindowUI:
         """Load UI settings from QSettings."""
         settings = QSettings()
 
-        # Load window geometry
+        # Load window geometry and state
         geometry = settings.value("ui/geometry")
         if geometry and isinstance(geometry, bytes | bytearray):
             self.main_window.restoreGeometry(geometry)
 
-        # Load log panel state
-        log_expanded = settings.value("ui/logPanelExpanded", True, type=bool)
+        # Load window state (for maximize/minimize)
+        window_state = settings.value("ui/windowState")
+        if window_state and isinstance(window_state, bytes | bytearray):
+            self.main_window.restoreState(window_state)
+
+        # Load log panel state (check both old and new settings keys for compatibility)
+        logs_collapsed = settings.value("ui/logsCollapsed", False, type=bool)
+        log_expanded = not logs_collapsed
+
+        # Fallback to old setting key if new one doesn't exist
+        if not settings.contains("ui/logsCollapsed"):
+            log_expanded_value = settings.value("ui/logPanelExpanded", True, type=bool)
+            log_expanded = bool(log_expanded_value) if log_expanded_value is not None else True
+
         if self.log_toggle_button and isinstance(log_expanded, bool):
             self.log_toggle_button.setChecked(log_expanded)
-            self._on_log_toggle(log_expanded)
+            self._on_log_toggle_splitter(log_expanded)
 
     def save_ui_settings(self) -> None:
         """Save UI settings to QSettings."""
         settings = QSettings()
 
-        # Save window geometry
+        # Save window geometry and state
         settings.setValue("ui/geometry", self.main_window.saveGeometry())
+        settings.setValue("ui/windowState", self.main_window.saveState())
 
         # Save log panel state
         if self.log_toggle_button:
-            settings.setValue("ui/logPanelExpanded", self.log_toggle_button.isChecked())
+            logs_collapsed = not self.log_toggle_button.isChecked()
+            settings.setValue("ui/logsCollapsed", logs_collapsed)
 
-    def _on_log_toggle(self, expanded: bool) -> None:
-        """Handle log panel toggle."""
-        if not (self.log_toggle_button and self.log_panel):
+            # Also save current splitter sizes if expanded
+            if self.main_splitter and self.log_toggle_button.isChecked():
+                current_sizes = self.main_splitter.sizes()
+                if len(current_sizes) == 3 and current_sizes[2] > 0:
+                    settings.setValue("ui/logsSplitter", current_sizes)
+
+    def _on_log_toggle_splitter(self, expanded: bool) -> None:
+        """Handle log panel toggle using splitter approach."""
+        if not (self.log_toggle_button and self.main_splitter):
             return
 
-        self.log_panel.setVisible(expanded)
+        # Update button text
         self.log_toggle_button.setText("▼ Logs" if expanded else "▶ Logs")
 
-        # Save state
+        current_sizes = self.main_splitter.sizes()
+
+        if expanded:
+            # Restore previous splitter sizes or use defaults
+            settings = QSettings()
+            saved_sizes = settings.value("ui/logsSplitter", [600, 50, 250])
+            if isinstance(saved_sizes, list) and len(saved_sizes) == 3:
+                self.main_splitter.setSizes(saved_sizes)
+            else:
+                # Default: main content, progress, logs
+                self.main_splitter.setSizes([600, 50, 250])
+        else:
+            # Save current sizes before collapsing (only if logs panel is visible)
+            if len(current_sizes) == 3 and current_sizes[2] > 0:
+                settings = QSettings()
+                settings.setValue("ui/logsSplitter", current_sizes)
+
+            # Collapse by setting log panel size to 0, redistribute to main content
+            if len(current_sizes) == 3:
+                main_size = current_sizes[0] + current_sizes[2]  # Give log space to main content
+                progress_size = current_sizes[1]  # Keep progress size
+                self.main_splitter.setSizes([main_size, progress_size, 0])
+
+        # Save expanded state
         settings = QSettings()
-        settings.setValue("ui/logPanelExpanded", expanded)
+        settings.setValue("ui/logsCollapsed", not expanded)
 
     def get_default_output_directory(self) -> Path:
         """Get the default output directory."""

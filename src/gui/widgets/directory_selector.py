@@ -2,19 +2,25 @@
 Output directory selection widget for the PDF2Foundry GUI application.
 """
 
-import os
 from pathlib import Path
 
-from PySide6.QtCore import QStandardPaths, Signal
-from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLineEdit, QToolButton, QWidget
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import QFileDialog, QLabel, QLineEdit, QMessageBox, QToolButton, QWidget
+
+from core.config_manager import ConfigManager
+from gui.output.output_folder_controller import OutputFolderController, ValidationResult
+from gui.widgets.directory_context_menu import DirectoryContextMenu
+from gui.widgets.directory_ui_setup import DirectoryUISetup
+from gui.widgets.directory_validation import DirectoryValidator
 
 
 class OutputDirectorySelector(QWidget):
     """
     Widget for selecting output directory with folder browser and path validation.
 
-    Provides a QLineEdit for displaying/editing the path and a QToolButton
-    for opening a folder browser dialog.
+    Provides a QLineEdit for displaying/editing the path, a QToolButton
+    for opening a folder browser dialog, and an "Open Output Folder" button
+    with integrated OutputFolderController functionality.
     """
 
     # Signals
@@ -22,227 +28,110 @@ class OutputDirectorySelector(QWidget):
     validityChanged = Signal(bool, str)  # Emitted when validity changes (is_valid, message)
     readyForUse = Signal(bool)  # Emitted when ready state changes
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None, config_manager: ConfigManager | None = None) -> None:
         super().__init__(parent)
+
+        # Initialize controller
+        self.controller = OutputFolderController(config_manager)
 
         # Internal state
         self._current_path: Path | None = None
         self._is_valid: bool = False
         self._error_message: str = ""
 
+        # UI components (will be created by DirectoryUISetup)
+        self.path_edit: QLineEdit | None = None
+        self.browse_button: QToolButton | None = None
+        self.open_folder_button: QToolButton | None = None
+        self.validation_icon: QLabel | None = None
+        self.helper_text: QLabel | None = None
+
         # Set up the UI
-        self._setup_ui()
-        self._setup_accessibility()
+        DirectoryUISetup.setup_ui(self)
+        DirectoryUISetup.setup_accessibility(self)
         self._connect_signals()
 
-        # Initialize with default directory
-        self._initialize_default_directory()
+        # Set up context menu
+        self.context_menu = DirectoryContextMenu(self, self.controller)
 
-    def _setup_ui(self) -> None:
-        """Create and arrange the UI elements."""
-        # Create main layout
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
-
-        # Create path line edit
-        self.path_edit = QLineEdit()
-        self.path_edit.setPlaceholderText("Select output folder...")
-
-        # Create browse button with folder icon
-        self.browse_button = QToolButton()
-        self.browse_button.setText("📁")  # Folder emoji as fallback
-        self.browse_button.setToolTip("Browse for folder")
-
-        # Add widgets to layout with appropriate stretch
-        layout.addWidget(self.path_edit, 1)  # Line edit expands
-        layout.addWidget(self.browse_button, 0)  # Button stays fixed size
-
-    def _setup_accessibility(self) -> None:
-        """Set up accessibility properties and tab order."""
-        # Set accessible names
-        self.path_edit.setAccessibleName("Output directory path")
-        self.browse_button.setAccessibleName("Browse for output directory")
-
-        # Set accessible descriptions
-        self.path_edit.setAccessibleDescription("Enter or select the output directory path")
-        self.browse_button.setAccessibleDescription("Opens a folder browser dialog")
-
-        # Set tab order
-        self.setTabOrder(self.path_edit, self.browse_button)
+        # Initialize with controller's current path
+        self._initialize_from_controller()
 
     def _connect_signals(self) -> None:
         """Connect widget signals to their handlers."""
+        assert self.path_edit is not None, "path_edit should be initialized by DirectoryUISetup"
+        assert self.browse_button is not None, "browse_button should be initialized by DirectoryUISetup"
+        assert self.open_folder_button is not None, "open_folder_button should be initialized by DirectoryUISetup"
+
         self.browse_button.clicked.connect(self._on_browse_clicked)
         self.path_edit.textChanged.connect(self._on_text_changed)
+        self.open_folder_button.clicked.connect(self._on_open_folder_clicked)
 
-    def _initialize_default_directory(self) -> None:
-        """Initialize the widget with a default output directory."""
-        default_dir = self.get_default_output_dir()
-        if default_dir:
-            self.set_path(default_dir)
+    def _initialize_from_controller(self) -> None:
+        """Initialize the widget with the controller's current path."""
+        current_path = self.controller.current_path()
+        if current_path:
+            self._apply_controller_path(current_path)
 
     def get_default_output_dir(self) -> Path | None:
-        """
-        Get the default output directory.
-
-        Returns:
-            The default output directory, or None if none available
-        """
-        # Try Documents folder first
-        documents_path = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DocumentsLocation)
-
-        if documents_path:
-            documents_dir = Path(documents_path)
-            if documents_dir.exists() and self._is_directory_writable(documents_dir):
-                return documents_dir
-
-        # Fall back to current working directory
-        try:
-            cwd = Path.cwd()
-            if self._is_directory_writable(cwd):
-                return cwd
-        except Exception:
-            pass
-
-        # Last resort: home directory
-        try:
-            home_dir = Path.home()
-            if home_dir.exists() and self._is_directory_writable(home_dir):
-                return home_dir
-        except Exception:
-            pass
-
-        return None
-
-    def _is_directory_writable(self, path: Path) -> bool:
-        """
-        Check if a directory is writable.
-
-        Args:
-            path: The directory path to check
-
-        Returns:
-            True if the directory is writable, False otherwise
-        """
-        try:
-            return path.exists() and path.is_dir() and os.access(path, os.W_OK | os.X_OK)
-        except Exception:
-            return False
+        """Get the default output directory."""
+        return DirectoryValidator.get_default_output_dir()
 
     def validate_path(self, path: Path | str) -> tuple[bool, str]:
-        """
-        Validate that a path exists, is a directory, and is writable.
-
-        Args:
-            path: The path to validate
-
-        Returns:
-            Tuple of (is_valid, error_message)
-        """
-        if isinstance(path, str):
-            path_str = path.strip()
-            if not path_str:
-                return False, "Path cannot be empty"
-            path = Path(path_str)
-
-        try:
-            # Normalize the path
-            normalized_path = path.expanduser().resolve()
-
-            # Check if path exists
-            if not normalized_path.exists():
-                return False, f"Directory does not exist: {normalized_path}"
-
-            # Check if it's a directory
-            if not normalized_path.is_dir():
-                return False, f"Path is not a directory: {normalized_path}"
-
-            # Check if it's writable
-            if not self._is_directory_writable(normalized_path):
-                return False, f"Directory is not writable: {normalized_path}"
-
-            return True, ""
-
-        except Exception as e:
-            return False, f"Invalid path: {e}"
+        """Validate a directory path for use as output directory."""
+        return DirectoryValidator.validate_path(path)
 
     def _on_text_changed(self, text: str) -> None:
         """Handle text changes in the path edit field."""
+        if not text.strip():
+            # Empty text - reset to controller's current path
+            current_path = self.controller.current_path()
+            self._apply_controller_path(current_path)
+            return
+
         # Clean up the text (remove trailing spaces/newlines)
         cleaned_text = text.strip()
-        if cleaned_text != text:
+        if cleaned_text != text and self.path_edit:
             # Update the line edit with cleaned text
             self.path_edit.blockSignals(True)
             self.path_edit.setText(cleaned_text)
             self.path_edit.blockSignals(False)
             text = cleaned_text
 
-        # Validate the path
-        is_valid, error_message = self.validate_path(text)
+        try:
+            # Create path and set via controller
+            path = Path(text)
+            result = self.controller.set_path(path, "user")
 
-        # Update internal state
-        self._is_valid = is_valid
-        self._error_message = error_message
+            # Update UI based on result
+            self._update_validation_state(result)
 
-        # Update UI styling
-        self._update_validation_ui(is_valid, error_message)
+            # Update internal state
+            self._current_path = result.normalized_path if result.valid or result.can_create else None
 
-        # Update internal path if valid
-        if is_valid and text:
-            try:
-                normalized_path = Path(text).expanduser().resolve()
-                self._current_path = normalized_path
-            except Exception:
-                self._current_path = None
-        else:
+            # Emit signals
+            self.validityChanged.emit(result.valid, result.message)
+            self.readyForUse.emit(result.valid)
+
+        except Exception as e:
+            # Handle path creation errors
+            error_msg = f"Invalid path: {e}"
+            self._is_valid = False
+            self._error_message = error_msg
             self._current_path = None
 
-        # Emit validity changed signal
-        self.validityChanged.emit(is_valid, error_message)
-        self.readyForUse.emit(is_valid)
+            if self.helper_text and self.validation_icon:
+                self.helper_text.setText(error_msg)
+                self.helper_text.show()
+                self.validation_icon.setText("❌")
+                self.validation_icon.show()
+
+            self.validityChanged.emit(False, error_msg)
+            self.readyForUse.emit(False)
 
     def _update_validation_ui(self, is_valid: bool, error_message: str) -> None:
-        """
-        Update the UI to reflect validation state.
-
-        Args:
-            is_valid: Whether the current path is valid
-            error_message: Error message if invalid
-        """
-        # Set dynamic property for styling
-        self.path_edit.setProperty("invalid", not is_valid)
-
-        # Update stylesheet based on validity
-        if is_valid:
-            self.path_edit.setStyleSheet(
-                """
-                QLineEdit {
-                    border: 1px solid #28a745;
-                    background-color: #f8fff8;
-                }
-            """
-            )
-            # Set tooltip to show full path
-            if self._current_path:
-                self.path_edit.setToolTip(f"Output directory: {self._current_path}")
-            else:
-                self.path_edit.setToolTip("Valid output directory")
-        else:
-            self.path_edit.setStyleSheet(
-                """
-                QLineEdit {
-                    border: 1px solid #dc3545;
-                    background-color: #fff8f8;
-                }
-            """
-            )
-            # Set tooltip to show error message
-            self.path_edit.setToolTip(error_message or "Invalid directory path")
-
-        # Force style refresh
-        self.path_edit.style().unpolish(self.path_edit)
-        self.path_edit.style().polish(self.path_edit)
+        """Update the UI to reflect validation state."""
+        DirectoryUISetup.update_validation_ui(self, is_valid, error_message)
 
     def set_path(self, path: str | Path) -> None:
         """
@@ -254,8 +143,11 @@ class OutputDirectorySelector(QWidget):
         if isinstance(path, str):
             path = Path(path)
 
-        # Use the shared normalization logic
-        self._normalize_and_set_path(path)
+        # Use the controller to set the path
+        result = self.controller.set_path(path, "settings")
+
+        # Apply the result to the UI
+        self._apply_controller_path(result.normalized_path)
 
     def path(self) -> str:
         """
@@ -266,6 +158,7 @@ class OutputDirectorySelector(QWidget):
         """
         if self._current_path:
             return str(self._current_path)
+        assert self.path_edit is not None, "path_edit should be initialized"
         return self.path_edit.text()
 
     def is_valid(self) -> bool:
@@ -301,7 +194,7 @@ class OutputDirectorySelector(QWidget):
         start_dir = ""
         if self._current_path and self._current_path.exists():
             start_dir = str(self._current_path)
-        elif self.path_edit.text().strip():
+        elif self.path_edit and self.path_edit.text().strip():
             # Try to use the text in the line edit
             try:
                 potential_path = Path(self.path_edit.text().strip()).expanduser()
@@ -327,33 +220,140 @@ class OutputDirectorySelector(QWidget):
         # Normalize and set the selected path
         self._normalize_and_set_path(Path(selected_dir))
 
+    def _on_open_folder_clicked(self) -> None:
+        """Handle open folder button click."""
+        current_path = self.controller.current_path()
+
+        # If path doesn't exist, offer to create it
+        if not current_path.exists():
+            reply = QMessageBox.question(
+                self,
+                "Create Folder",
+                f"The output folder does not exist:\n{current_path}\n\nWould you like to create it now?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
+
+            if reply == QMessageBox.StandardButton.Yes:
+                if not self.controller.ensure_exists(current_path, create_if_missing=True):
+                    QMessageBox.warning(
+                        self,
+                        "Creation Failed",
+                        f"Could not create the output folder:\n{current_path}\n\nPlease check permissions and try again.",
+                    )
+                    return
+            else:
+                return
+
+        # Try to open in file manager
+        if not self.controller.open_in_file_manager(current_path):
+            QMessageBox.warning(
+                self,
+                "Cannot Open Folder",
+                f"Could not open the output folder in your file manager:\n{current_path}\n\n"
+                "The folder may be on an unmounted drive or you may not have the necessary permissions.",
+            )
+
+    def _apply_controller_path(self, path: Path) -> None:
+        """Apply a path from the controller to the UI."""
+        if not self.path_edit:
+            return
+
+        # Update the line edit without triggering text change events
+        self.path_edit.blockSignals(True)
+        self.path_edit.setText(str(path))
+        self.path_edit.blockSignals(False)
+
+        # Update internal state
+        self._current_path = path
+
+        # Validate using controller
+        result = self.controller._validate_path(path)
+        self._update_validation_state(result)
+
+        # Emit signals
+        self.pathChanged.emit(str(path))
+        self.validityChanged.emit(result.valid, result.message)
+        self.readyForUse.emit(result.valid)
+
+    def _update_validation_state(self, result: ValidationResult) -> None:
+        """Update UI validation state based on ValidationResult."""
+        assert self.path_edit is not None, "path_edit should be initialized"
+        assert self.validation_icon is not None, "validation_icon should be initialized"
+        assert self.helper_text is not None, "helper_text should be initialized"
+
+        self._is_valid = result.valid
+        self._error_message = result.message
+
+        # Update path edit styling
+        if result.valid:
+            self.path_edit.setStyleSheet("QLineEdit { border: 1px solid #28a745; background-color: #f8fff8; }")
+            self.path_edit.setProperty("validation_state", "valid")
+        elif result.can_create:
+            self.path_edit.setStyleSheet("QLineEdit { border: 1px solid #ffc107; background-color: #fffbf0; }")
+            self.path_edit.setProperty("validation_state", "warning")
+        else:
+            self.path_edit.setStyleSheet("QLineEdit { border: 1px solid #dc3545; background-color: #fff8f8; }")
+            self.path_edit.setProperty("validation_state", "error")
+
+        # Update validation icon and helper text
+        if result.level == "error":
+            self.validation_icon.setText("❌")
+            self.validation_icon.setToolTip("Error")
+            self.helper_text.setStyleSheet("color: #dc3545; font-size: 11px;")
+        elif result.level == "warning":
+            self.validation_icon.setText("⚠️")
+            self.validation_icon.setToolTip("Warning")
+            self.helper_text.setStyleSheet("color: #ffc107; font-size: 11px;")
+        elif result.level == "info" and result.valid:
+            self.validation_icon.setText("✅")
+            self.validation_icon.setToolTip("Valid")
+            self.helper_text.setStyleSheet("color: #28a745; font-size: 11px;")
+        else:
+            self.validation_icon.setText("💡")
+            self.validation_icon.setToolTip("Info")
+            self.helper_text.setStyleSheet("color: #17a2b8; font-size: 11px;")
+
+        # Show/hide feedback elements
+        if result.message:
+            self.helper_text.setText(result.message)
+            self.helper_text.show()
+            self.validation_icon.show()
+        else:
+            self.helper_text.hide()
+            self.validation_icon.hide()
+
+        # Force style refresh
+        self.path_edit.style().unpolish(self.path_edit)
+        self.path_edit.style().polish(self.path_edit)
+
+    def set_last_export_path(self, path: Path) -> None:
+        """Set the last export path in the controller."""
+        self.controller.set_last_export_path(path)
+
     def _normalize_and_set_path(self, path: Path) -> None:
         """
-        Normalize a path and update the UI.
+        Normalize a path and update the UI using the controller.
 
         Args:
             path: The path to normalize and set
         """
-        try:
-            # Normalize the path: expanduser, resolve, absolute
-            normalized_path = path.expanduser().resolve().absolute()
+        # Use controller to set and validate the path
+        result = self.controller.set_path(path, "user")
 
-            # Handle Windows drive/UNC paths if needed
-            self._current_path = normalized_path
+        # Update UI based on result
+        if self.path_edit:
+            self.path_edit.blockSignals(True)
+            self.path_edit.setText(str(result.normalized_path))
+            self.path_edit.blockSignals(False)
 
-            # Display using native separators
-            display_path = str(normalized_path)
-            self.path_edit.setText(display_path)
+        # Update validation state
+        self._update_validation_state(result)
 
-            # Update tooltip with full path
-            self.path_edit.setToolTip(f"Output directory: {display_path}")
+        # Update internal state
+        self._current_path = result.normalized_path if result.valid or result.can_create else None
 
-            # Emit pathChanged signal
-            self.pathChanged.emit(str(normalized_path))
-
-        except Exception as e:
-            # Handle normalization errors
-            self._current_path = None
-            self.path_edit.setText(str(path))
-            self.path_edit.setToolTip(f"Invalid path: {e}")
-            self.pathChanged.emit(str(path))
+        # Emit signals
+        self.pathChanged.emit(str(result.normalized_path))
+        self.validityChanged.emit(result.valid, result.message)
+        self.readyForUse.emit(result.valid)

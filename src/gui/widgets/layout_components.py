@@ -5,6 +5,8 @@ This module handles the creation and setup of major layout components,
 separating layout logic from the main UI class.
 """
 
+from __future__ import annotations
+
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -14,6 +16,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.config_manager import ConfigManager
 from gui.widgets.directory_selector import OutputDirectorySelector
 from gui.widgets.drag_drop import DragDropLabel
 
@@ -92,7 +95,9 @@ class LayoutComponentsManager:
 
         return header_widget
 
-    def setup_output_directory_selector(self, main_layout: QVBoxLayout) -> OutputDirectorySelector:
+    def setup_output_directory_selector(
+        self, main_layout: QVBoxLayout, config_manager: ConfigManager | None = None
+    ) -> OutputDirectorySelector:
         """
         Set up the output directory selector row.
 
@@ -117,7 +122,7 @@ class LayoutComponentsManager:
         output_dir_layout.addWidget(output_dir_label)
 
         # Output directory selector widget
-        output_dir_selector = OutputDirectorySelector()
+        output_dir_selector = OutputDirectorySelector(config_manager=config_manager)
         output_dir_selector.setObjectName("outputDirSelector")
         output_dir_selector.setAccessibleName("Output directory selector")
         output_dir_selector.setAccessibleDescription("Select where converted modules will be saved")

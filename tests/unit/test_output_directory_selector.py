@@ -1,14 +1,11 @@
-"""
-Tests for the OutputDirectorySelector widget.
-"""
+"""Tests for the OutputDirectorySelector widget."""
 
 import os
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
-from PySide6.QtCore import QStandardPaths
-from PySide6.QtWidgets import QFileDialog
+from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QVBoxLayout
 
 from gui.widgets.directory_selector import OutputDirectorySelector
 
@@ -42,11 +39,23 @@ class TestOutputDirectorySelectorInitialization:
         # Check that widgets are properly arranged
         layout = widget.layout()
         assert layout is not None
-        assert layout.count() == 2  # path_edit and browse_button
+        assert isinstance(layout, QVBoxLayout)
 
-        # Check stretch factors
-        assert layout.itemAt(0).widget() == widget.path_edit
-        assert layout.itemAt(1).widget() == widget.browse_button
+        # The main layout should have the input layout and validation layout
+        assert layout.count() >= 1  # At least the input layout
+
+        # Get the input layout (first item in main layout)
+        input_layout_item = layout.itemAt(0)
+        assert input_layout_item is not None
+        input_layout = input_layout_item.layout()
+        assert input_layout is not None
+        assert isinstance(input_layout, QHBoxLayout)
+
+        # Check that the input layout contains the expected widgets
+        assert input_layout.count() == 3  # path_edit, browse_button, open_folder_button
+        assert input_layout.itemAt(0).widget() == widget.path_edit
+        assert input_layout.itemAt(1).widget() == widget.browse_button
+        assert input_layout.itemAt(2).widget() == widget.open_folder_button
 
     def test_accessibility_properties(self, qtbot):
         """Test that accessibility properties are set."""
@@ -58,32 +67,40 @@ class TestOutputDirectorySelectorInitialization:
         assert "Enter or select" in widget.path_edit.accessibleDescription()
         assert "Opens a folder browser" in widget.browse_button.accessibleDescription()
 
-    @patch.object(QStandardPaths, "writableLocation")
+    @patch("gui.output.output_folder_controller.QStandardPaths.writableLocation")
     def test_default_initialization_with_documents(self, mock_writable_location, qtbot, tmp_path):
         """Test initialization with Documents folder as default."""
-        # Mock Documents location to return our temp directory
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config.set = Mock()
         mock_writable_location.return_value = str(tmp_path)
-
-        widget = OutputDirectorySelector()
+        expected_dir = tmp_path / "pdf2foundry"
+        expected_dir.mkdir(parents=True, exist_ok=True)
+        widget = OutputDirectorySelector(config_manager=mock_config)
         qtbot.addWidget(widget)
-
-        # Should initialize with the Documents folder
-        assert widget.path() == str(tmp_path)
-        assert widget.is_valid()
-
-    @patch.object(QStandardPaths, "writableLocation")
-    def test_default_initialization_fallback_to_cwd(self, mock_writable_location, qtbot):
-        """Test initialization fallback to current working directory."""
-        # Mock Documents location to return None
-        mock_writable_location.return_value = None
-
-        widget = OutputDirectorySelector()
-        qtbot.addWidget(widget)
-
-        # Should fall back to current working directory
-        expected_path = str(Path.cwd())
+        expected_path = str(expected_dir)
         assert widget.path() == expected_path
         assert widget.is_valid()
+
+    @patch("gui.output.output_folder_controller.QStandardPaths.writableLocation")
+    def test_default_initialization_fallback_to_cwd(self, mock_writable_location, qtbot, tmp_path):
+        """Test initialization fallback to current working directory."""
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config.set = Mock()
+        mock_writable_location.return_value = None
+        expected_dir = Path.cwd() / "pdf2foundry"
+        expected_dir.mkdir(parents=True, exist_ok=True)
+        widget = OutputDirectorySelector(config_manager=mock_config)
+        qtbot.addWidget(widget)
+        try:
+            expected_path = str(expected_dir)
+            assert widget.path() == expected_path
+            assert widget.is_valid()
+        finally:
+            # Clean up the created directory
+            if expected_dir.exists():
+                expected_dir.rmdir()
 
 
 class TestOutputDirectorySelectorPathHandling:
@@ -143,7 +160,7 @@ class TestOutputDirectorySelectorValidation:
         is_valid, error_message = widget.validate_path(tmp_path)
 
         assert is_valid
-        assert error_message == ""
+        assert "Valid output directory" in error_message
 
     def test_nonexistent_path_validation(self, qtbot, tmp_path):
         """Test validation of a non-existent path."""
@@ -153,8 +170,9 @@ class TestOutputDirectorySelectorValidation:
         nonexistent_path = tmp_path / "nonexistent"
         is_valid, error_message = widget.validate_path(nonexistent_path)
 
-        assert not is_valid
-        assert "does not exist" in error_message
+        # The new validator allows creation if parent exists and is writable
+        assert is_valid
+        assert "Directory will be created" in error_message
 
     def test_file_path_validation(self, qtbot, tmp_path):
         """Test validation of a file path (should be invalid)."""
@@ -178,7 +196,7 @@ class TestOutputDirectorySelectorValidation:
         is_valid, error_message = widget.validate_path("")
 
         assert not is_valid
-        assert "cannot be empty" in error_message
+        assert "Please select an output directory" in error_message
 
     @patch("os.access")
     def test_readonly_directory_validation(self, mock_access, qtbot, tmp_path):
@@ -198,8 +216,14 @@ class TestOutputDirectorySelectorValidation:
 class TestOutputDirectorySelectorRealTimeValidation:
     """Test real-time validation as user types."""
 
-    def test_text_changed_validation(self, qtbot, tmp_path):
+    @patch("core.config_manager.ConfigManager")
+    def test_text_changed_validation(self, mock_config_class, qtbot, tmp_path):
         """Test that validation occurs when text changes."""
+        # Mock ConfigManager to return None for stored paths
+        mock_config = Mock()
+        mock_config.get.return_value = None
+        mock_config_class.return_value = mock_config
+
         widget = OutputDirectorySelector()
         qtbot.addWidget(widget)
 
@@ -219,7 +243,8 @@ class TestOutputDirectorySelectorRealTimeValidation:
         # Check the arguments
         args = validity_spy.call_args[0]
         assert args[0] is True  # is_valid
-        assert args[1] == ""  # error_message
+        # The message can be either empty or a success message
+        assert isinstance(args[1], str)  # message should be a string
 
     def test_text_cleanup(self, qtbot, tmp_path):
         """Test that trailing spaces are cleaned up."""

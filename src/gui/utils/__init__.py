@@ -5,6 +5,7 @@ This module contains utility functions and classes that are specific
 to the GUI implementation.
 """
 
+from .fs import open_in_file_manager
 from .styling import (
     Colors,
     StyleSheets,
@@ -15,6 +16,7 @@ from .styling import (
 )
 
 __all__ = [
+    "open_in_file_manager",
     "StyleSheets",
     "Colors",
     "apply_status_style",

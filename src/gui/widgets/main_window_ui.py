@@ -5,6 +5,8 @@ This module provides UI setup functionality for the main window,
 separating layout concerns from business logic.
 """
 
+from __future__ import annotations
+
 from pathlib import Path
 
 from PySide6.QtCore import QSettings, QStandardPaths, Qt
@@ -24,6 +26,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.config_manager import ConfigManager
 from gui.utils.styling import apply_status_style
 from gui.widgets.directory_selector import OutputDirectorySelector
 from gui.widgets.drag_drop import DragDropLabel
@@ -85,10 +88,10 @@ class MainWindowUI:
         # Custom title bar (optional)
         self.custom_title_bar_enabled: bool = False
 
-    def setup_ui(self) -> None:
+    def setup_ui(self, config_manager: ConfigManager | None = None) -> None:
         """Set up the complete user interface."""
         self.window_properties.setup_window_properties()
-        self._setup_central_widget()
+        self._setup_central_widget(config_manager=config_manager)
         self.keyboard_shortcuts.setup_shortcuts(
             browse_button=self.browse_button,
             help_button=self.help_button,
@@ -99,7 +102,7 @@ class MainWindowUI:
         self._setup_accessibility()
         self._load_ui_settings()
 
-    def _setup_central_widget(self) -> None:
+    def _setup_central_widget(self, config_manager: ConfigManager | None = None) -> None:
         """Set up the central widget and main layout."""
         self.central_widget = QWidget()
         self.main_window.setCentralWidget(self.central_widget)
@@ -125,7 +128,9 @@ class MainWindowUI:
         main_content_layout.setSpacing(20)
 
         # Output directory selector
-        self.output_dir_selector = self.layout_components.setup_output_directory_selector(main_content_layout)
+        self.output_dir_selector = self.layout_components.setup_output_directory_selector(
+            main_content_layout, config_manager
+        )
 
         # File selection area
         self.drag_drop_label = self.layout_components.setup_file_selection_area(main_content_layout)

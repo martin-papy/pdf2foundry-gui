@@ -26,6 +26,7 @@ from core.gui_mapping import GuiConfigMapper
 from core.pdf_utils import is_pdf_file
 from gui.conversion_handler import ConversionHandler
 from gui.dialogs.settings import SettingsDialog
+from gui.output.output_folder_controller import OutputFolderController
 from gui.utils.styling import apply_status_style
 from gui.widgets.drag_drop import DragDropLabel
 from gui.widgets.log_console import LogConsole
@@ -44,21 +45,28 @@ class MainWindow(QMainWindow):
         """Initialize the main window."""
         super().__init__()
 
-        # Initialize UI
-        self.ui = MainWindowUI(self)
-        self.ui.setup_ui()
-
-        # Initialize components
+        # Initialize components first
         self.config_manager = ConfigManager()
         self._config_manager = self.config_manager  # Backward compatibility alias
         self.gui_mapper = GuiConfigMapper()
         self._gui_mapper = self.gui_mapper  # Backward compatibility alias
+
+        # Initialize output folder controller
+        self.output_controller = OutputFolderController(self.config_manager)
+
+        # Initialize UI with config manager
+        self.ui = MainWindowUI(self)
+        self.ui.setup_ui(config_manager=self.config_manager)
 
         # Initialize conversion handler
         self.conversion_handler = ConversionHandler(self)
 
         # Connect signals
         self._connect_signals()
+
+        # Connect conversion completion signal to update last export path
+        if hasattr(self.conversion_handler, "controller"):
+            self.conversion_handler.controller.conversionCompleted.connect(self._on_conversion_completed)
 
         # Load output directory from config
         self._load_output_directory()
@@ -217,21 +225,17 @@ class MainWindow(QMainWindow):
             self._load_output_directory()
 
     def _load_output_directory(self) -> None:
-        """Load output directory from config and update the UI."""
+        """Load output directory from controller and update the UI."""
         if not self.ui.output_dir_selector:
             return
 
-        # Get output directory from config
-        output_dir = self.config_manager.get("output_dir", "")
-
-        if output_dir:
-            self.ui.output_dir_selector.set_path(output_dir)
-        # If no config value, the OutputDirectorySelector will use its default
+        # The OutputDirectorySelector now uses the OutputFolderController internally,
+        # so it will automatically load the current path from the controller.
+        # No additional loading is needed here.
 
     def on_output_dir_changed(self, path: str) -> None:
         """Handle output directory path changes."""
-        # Save to config manager
-        self.config_manager.set("output_dir", path)
+        # The OutputDirectorySelector now handles persistence through the controller
         logging.info(f"Output directory changed to: {path}")
 
     def on_output_dir_validity_changed(self, is_valid: bool, error_message: str) -> None:
@@ -257,6 +261,19 @@ class MainWindow(QMainWindow):
 
         # Enable convert button only if both conditions are met
         self.ui.convert_button.setEnabled(has_pdf and output_dir_valid)
+
+    def _on_conversion_completed(self, result: dict) -> None:
+        """Handle conversion completion to update last export path."""
+        output_dir = result.get("output_dir")
+        if output_dir and self.output_controller:
+            from pathlib import Path
+
+            try:
+                output_path = Path(output_dir)
+                self.output_controller.set_last_export_path(output_path)
+                logging.info(f"Updated last export path to: {output_path}")
+            except Exception as e:
+                logging.warning(f"Failed to update last export path: {e}")
 
     def get_selected_pdf_path(self) -> str | None:
         """Get the currently selected PDF path."""

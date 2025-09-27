@@ -11,7 +11,8 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from .conversion_config import ConversionConfig, OcrMode, PictureDescriptionMode, TableMode
-from .validation import ValidationError, parse_page_range, validate_and_normalize
+from .page_utils import parse_page_range
+from .validation import ValidationError, validate_and_normalize
 
 
 class GuiMappingError(Exception):
@@ -100,7 +101,7 @@ class GuiConfigMapper:
 
         except ValidationError as e:
             # Map validation errors back to GUI field names
-            gui_field = self._map_config_field_to_gui(e.field)
+            gui_field = self._map_config_field_to_gui(e.field or "")
             raise GuiMappingError(f"Validation failed for {gui_field or e.field}: {e.message}", field=gui_field) from e
 
         except Exception as e:

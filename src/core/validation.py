@@ -9,29 +9,81 @@ from __future__ import annotations
 
 import os
 import re
-from dataclasses import dataclass
 from typing import Any
 
 from .conversion_config import ConversionConfig, OcrMode, PictureDescriptionMode, TableMode
+from .errors import ErrorCode
+from .errors import ValidationError as BaseValidationError
 
 
-@dataclass
-class ValidationError(Exception):
+class ValidationError(BaseValidationError):
     """
     Structured validation error with field-specific information.
 
     This exception provides detailed information about validation failures
     that can be used to provide precise UI feedback to users.
+
+    Note: This class now inherits from the centralized error hierarchy
+    while maintaining backward compatibility.
     """
 
-    field: str
-    code: str
-    message: str
-    value: Any = None
+    def __init__(self, field: str, code: str, message: str, value: Any = None):
+        # Map old code to new ErrorCode enum
+        error_code = self._map_legacy_code(code)
+
+        super().__init__(
+            code=error_code,
+            user_message=message,
+            field=field,
+            technical_message=f"Validation failed for field '{field}': {message}",
+        )
+
+        # Store legacy attributes for backward compatibility
+        # Note: field is already stored in context by parent class
+        self.legacy_code = code  # Store legacy string code separately
+        self.message = message
+        self.value = value
+
+    # Override the code property to return string instead of ErrorCode
+    # This maintains backward compatibility with existing code
+    def __getattribute__(self, name: str) -> Any:
+        if name == "code":
+            return self.legacy_code
+        return super().__getattribute__(name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name == "code" and hasattr(self, "legacy_code"):
+            # If we already have legacy_code, update it
+            if isinstance(value, str):
+                self.legacy_code = value
+            # Ignore ErrorCode enum assignments from parent
+        else:
+            super().__setattr__(name, value)
 
     def __str__(self) -> str:
         """Return a user-friendly error message."""
         return f"{self.field}: {self.message}"
+
+    @staticmethod
+    def _map_legacy_code(code: str) -> ErrorCode:
+        """Map legacy validation codes to new ErrorCode enum."""
+        code_mapping = {
+            # Lowercase codes (as used in the codebase)
+            "required": ErrorCode.REQUIRED_FIELD_MISSING,
+            "invalid_format": ErrorCode.INVALID_FORMAT,
+            "out_of_range": ErrorCode.VALUE_OUT_OF_RANGE,
+            "file_not_found": ErrorCode.FILE_NOT_FOUND,
+            "permission_denied": ErrorCode.PERMISSION_DENIED,
+            "invalid_value": ErrorCode.INVALID_INPUT,
+            # Uppercase codes (for backward compatibility)
+            "REQUIRED": ErrorCode.REQUIRED_FIELD_MISSING,
+            "INVALID_FORMAT": ErrorCode.INVALID_FORMAT,
+            "OUT_OF_RANGE": ErrorCode.VALUE_OUT_OF_RANGE,
+            "FILE_NOT_FOUND": ErrorCode.FILE_NOT_FOUND,
+            "PERMISSION_DENIED": ErrorCode.PERMISSION_DENIED,
+            "INVALID_VALUE": ErrorCode.INVALID_INPUT,
+        }
+        return code_mapping.get(code, ErrorCode.INVALID_INPUT)
 
 
 class ConfigValidator:
@@ -361,82 +413,6 @@ class ConfigValidator:
 
         # Check that it doesn't have consecutive hyphens
         return "--" not in mod_id
-
-
-def parse_page_range(page_spec: str) -> list[int]:
-    """
-    Parse a page range specification into a list of page numbers.
-
-    Args:
-        page_spec: Page specification like "1,3,5-10,15"
-
-    Returns:
-        List of page numbers (1-based)
-
-    Raises:
-        ValidationError: If the page specification is invalid
-    """
-    if not page_spec.strip():
-        raise ValidationError(
-            field="pages", code="empty_spec", message="Page specification cannot be empty", value=page_spec
-        )
-
-    # Check format with regex
-    if not ConfigValidator.PAGE_RANGE_PATTERN.match(page_spec.strip()):
-        raise ValidationError(
-            field="pages",
-            code="invalid_format",
-            message="Invalid page range format. Use comma-separated numbers and ranges (e.g., '1,3,5-10')",
-            value=page_spec,
-        )
-
-    pages: list[int] = []
-
-    for part in page_spec.split(","):
-        part = part.strip()
-
-        if "-" in part:
-            # Range like "5-10"
-            try:
-                start, end = part.split("-", 1)
-                start_num = int(start)
-                end_num = int(end)
-
-                if start_num < 1 or end_num < 1:
-                    raise ValidationError(
-                        field="pages", code="invalid_page_number", message="Page numbers must be positive", value=page_spec
-                    )
-
-                if start_num > end_num:
-                    raise ValidationError(
-                        field="pages",
-                        code="invalid_range",
-                        message=f"Invalid range: {start_num}-{end_num} (start > end)",
-                        value=page_spec,
-                    )
-
-                pages.extend(range(start_num, end_num + 1))
-
-            except ValueError as e:
-                raise ValidationError(
-                    field="pages", code="invalid_number", message=f"Invalid number in range: {part}", value=page_spec
-                ) from e
-        else:
-            # Single page number
-            try:
-                page_num = int(part)
-                if page_num < 1:
-                    raise ValidationError(
-                        field="pages", code="invalid_page_number", message="Page numbers must be positive", value=page_spec
-                    )
-                pages.append(page_num)
-            except ValueError as e:
-                raise ValidationError(
-                    field="pages", code="invalid_number", message=f"Invalid page number: {part}", value=page_spec
-                ) from e
-
-    # Remove duplicates and sort
-    return sorted(set(pages))
 
 
 def validate_and_normalize(config: ConversionConfig) -> ConversionConfig:

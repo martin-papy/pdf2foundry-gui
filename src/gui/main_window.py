@@ -175,9 +175,9 @@ class MainWindow(QMainWindow):
     def _on_conversion_completed(self, result: dict) -> None:
         """Handle conversion completion."""
         # Update last export path
-        if "output_path" in result:
-            output_path = result["output_path"]
-            self.config_manager.set("ui/lastExportPath", output_path)
+        output_path = result.get("output_dir") or result.get("output_path")
+        if output_path:
+            self.output_controller.set_last_export_path(output_path)
             logging.getLogger(__name__).info(f"Updated last export path to: {output_path}")
 
     def set_conversion_state(self, state: ConversionState) -> None:
@@ -207,12 +207,16 @@ class MainWindow(QMainWindow):
     @property
     def status_text(self) -> QLabel | None:
         """Get the status text label."""
-        return getattr(self.ui, "status_text", None)
+        if self.ui.status_indicator_widget:
+            return self.ui.status_indicator_widget.status_text
+        return None
 
     @property
     def status_dot(self) -> QLabel | None:
         """Get the status dot label."""
-        return getattr(self.ui, "status_dot", None)
+        if self.ui.status_indicator_widget:
+            return self.ui.status_indicator_widget.status_dot
+        return None
 
     @property
     def status_label(self) -> QLabel:

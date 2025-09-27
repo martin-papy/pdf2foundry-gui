@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar
 
+from .errors import BaseAppError, ErrorType
 from .validation import ValidationError
 
 logger = logging.getLogger(__name__)
@@ -88,9 +89,13 @@ class ErrorTranslator:
         """
         context = context or {}
 
-        # Handle ValidationError specifically
+        # Handle ValidationError specifically first (before BaseAppError check)
         if isinstance(exception, ValidationError):
             return self._translate_validation_error(exception, context)
+
+        # Handle new BaseAppError hierarchy
+        if isinstance(exception, BaseAppError):
+            return self.from_app_error(exception)
 
         # Try to match against known error patterns
         exception_str = str(exception)
@@ -102,6 +107,70 @@ class ErrorTranslator:
 
         # Fallback for unknown errors
         return self._translate_unknown_error(exception, context)
+
+    def from_app_error(self, app_error: BaseAppError) -> UserFriendlyError:
+        """
+        Convert a BaseAppError to a UserFriendlyError.
+
+        Args:
+            app_error: The BaseAppError to convert
+
+        Returns:
+            UserFriendlyError with appropriate UI display information
+        """
+        # Map ErrorType to category for help URL generation
+        type_to_category = {
+            ErrorType.FILE: "file_system",
+            ErrorType.VALIDATION: "validation",
+            ErrorType.CONVERSION: "conversion",
+            ErrorType.CONFIG: "configuration",
+            ErrorType.SYSTEM: "unknown",  # Default fallback
+        }
+
+        category = type_to_category.get(app_error.type, "unknown")
+        code = f"{self.ERROR_CATEGORIES[category]}_{app_error.code.value}"
+
+        # Use user_message if available, otherwise technical_message
+        message = app_error.user_message or app_error.technical_message or "An error occurred"
+
+        # Generate help URL based on error type
+        help_url = f"{self.HELP_BASE_URL}/troubleshooting#{app_error.type.value}-errors"
+
+        # Extract field from context if it's a validation error
+        field = app_error.context.get("field") if app_error.context else None
+
+        return UserFriendlyError(
+            code=code,
+            title=self._generate_title_from_error_type(app_error.type),
+            message=self._sanitize_paths(message),
+            details=self._sanitize_paths(app_error.technical_message) if app_error.technical_message else None,
+            remediation=self._generate_remediation_from_error(app_error),
+            help_url=help_url,
+            field=field,
+        )
+
+    def _generate_title_from_error_type(self, error_type: ErrorType) -> str:
+        """Generate a user-friendly title from error type."""
+        titles = {
+            ErrorType.FILE: "File Error",
+            ErrorType.VALIDATION: "Input Error",
+            ErrorType.CONVERSION: "Conversion Error",
+            ErrorType.CONFIG: "Configuration Error",
+            ErrorType.SYSTEM: "System Error",
+        }
+        return titles.get(error_type, "Error")
+
+    def _generate_remediation_from_error(self, app_error: BaseAppError) -> str | None:
+        """Generate remediation suggestions based on error code."""
+        remediation_map = {
+            "FILE_NOT_FOUND": "Please check that the file exists and try again.",
+            "PERMISSION_DENIED": "Please check file permissions or try running as administrator.",
+            "INVALID_INPUT": "Please check your input and try again.",
+            "OPERATION_CANCELLED": "The operation was cancelled. You can try again if needed.",
+            "BACKEND_FAILURE": "Please try again or contact support if the problem persists.",
+        }
+
+        return remediation_map.get(app_error.code.value)
 
     def _translate_validation_error(self, error: ValidationError, context: dict[str, Any]) -> UserFriendlyError:
         """Translate a ValidationError into user-friendly format."""
@@ -150,7 +219,7 @@ class ErrorTranslator:
         }
 
         error_info = validation_messages.get(
-            error.code,
+            error.legacy_code,
             {
                 "title": "Validation Error",
                 "message": error.message,
@@ -162,7 +231,7 @@ class ErrorTranslator:
         sanitized_message = self._sanitize_paths(error_info["message"])
 
         return UserFriendlyError(
-            code=f"VALIDATION_{error.code.upper()}",
+            code=f"VALIDATION_{error.legacy_code.upper()}",
             title=error_info["title"],
             message=sanitized_message,
             remediation=error_info["remediation"],
@@ -389,3 +458,18 @@ def log_error_details(error: UserFriendlyError, original_exception: Exception | 
         },
         exc_info=original_exception,
     )
+
+
+# Convenience functions for easy error handling
+def to_user_error(err: BaseAppError) -> UserFriendlyError:
+    """
+    Convert a BaseAppError to a UserFriendlyError.
+
+    Args:
+        err: The BaseAppError to convert
+
+    Returns:
+        UserFriendlyError suitable for UI display
+    """
+    translator = ErrorTranslator()
+    return translator.from_app_error(err)

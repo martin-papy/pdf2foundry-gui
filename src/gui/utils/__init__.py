@@ -16,11 +16,11 @@ from .styling import (
 )
 
 __all__ = [
-    "open_in_file_manager",
-    "StyleSheets",
     "Colors",
+    "StyleSheets",
     "apply_status_style",
     "apply_validation_style",
     "create_drag_zone_stylesheet",
     "get_common_form_layout_config",
+    "open_in_file_manager",
 ]

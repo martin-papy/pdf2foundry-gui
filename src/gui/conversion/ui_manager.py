@@ -91,10 +91,18 @@ class ConversionUIManager:
             # Log the finalization
             self._logger.info(f"[{conversion_id}] Finalizing conversion with outcome: {outcome}")
 
-            # Restore UI to idle state with appropriate preservation
-            reset_progress = outcome == "cancelled"  # Only reset progress for cancellation
-            preserve_format = outcome in ["error", "cancelled"]
-            self._restore_idle_ui(reset_progress=reset_progress, preserve_format=preserve_format)
+            # Restore UI to appropriate state based on outcome
+            if outcome == "success":
+                # For successful completions, set to completed state instead of idle
+                self.main_window.set_conversion_state(ConversionState.COMPLETED)
+            elif outcome == "error":
+                # For errors, set to error state to show the user there was an error
+                self.main_window.set_conversion_state(ConversionState.ERROR)
+            else:
+                # For cancellations, restore to idle with preservation
+                reset_progress = outcome == "cancelled"  # Only reset progress for cancellation
+                preserve_format = outcome in ["error", "cancelled"]
+                self._restore_idle_ui(reset_progress=reset_progress, preserve_format=preserve_format)
 
         except Exception as e:
             self._logger.error(f"[{conversion_id}] Error during conversion finalization: {e}")

@@ -87,25 +87,22 @@ class TestConversionHandlerSignals:
         conversion_handler.on_progress_changed(30, "Step 3")
 
         # Verify timer is running (throttling active)
-        assert conversion_handler._progress_timer.isActive()
+        assert conversion_handler._progress_throttle_timer.isActive()
 
         # Verify latest values are stored
-        assert conversion_handler._last_progress_percent == 30
-        assert conversion_handler._last_progress_message == "Step 3"
+        assert conversion_handler._pending_progress == (30, "Step 3")
 
     def test_progress_clamping(self, conversion_handler, main_window):
         """Test that progress values are clamped to 0-100 range."""
         conversion_handler._conversion_started = True
 
         # Test values outside valid range
-        conversion_handler._last_progress_percent = 150
-        conversion_handler._last_progress_message = "Over 100%"
+        conversion_handler._pending_progress = (150, "Over 100%")
         conversion_handler._apply_throttled_progress()
 
         assert main_window.progress_bar.value() == 100
 
-        conversion_handler._last_progress_percent = -10
-        conversion_handler._last_progress_message = "Negative"
+        conversion_handler._pending_progress = (-10, "Negative")
         conversion_handler._apply_throttled_progress()
 
         # Negative values should trigger indeterminate mode
@@ -125,8 +122,7 @@ class TestConversionHandlerSignals:
         ]
 
         for percent, message in test_cases:
-            conversion_handler._last_progress_percent = percent
-            conversion_handler._last_progress_message = message
+            conversion_handler._pending_progress = (percent, message)
             conversion_handler._apply_throttled_progress()
 
             # Should be in indeterminate mode (range 0-0)
@@ -174,7 +170,7 @@ class TestConversionHandlerSignals:
         assert main_window.progress_bar.format() == "100% — Completed"
 
         # Verify timer stopped
-        assert not conversion_handler._progress_timer.isActive()
+        assert not conversion_handler._progress_throttle_timer.isActive()
 
     def test_conversion_error_status(self, conversion_handler, main_window):
         """Test conversion error signal handling."""
@@ -194,7 +190,7 @@ class TestConversionHandlerSignals:
         assert "Error — TestError" in main_window.progress_bar.format()
 
         # Verify timer stopped
-        assert not conversion_handler._progress_timer.isActive()
+        assert not conversion_handler._progress_throttle_timer.isActive()
 
     def test_conversion_canceled_status(self, conversion_handler, main_window):
         """Test conversion canceled signal handling."""
@@ -210,14 +206,13 @@ class TestConversionHandlerSignals:
         assert main_window.progress_bar.format() == "Canceled"
 
         # Verify timer stopped
-        assert not conversion_handler._progress_timer.isActive()
+        assert not conversion_handler._progress_throttle_timer.isActive()
 
     def test_progress_format_with_message(self, conversion_handler, main_window):
         """Test progress bar format includes message when provided."""
         conversion_handler._conversion_started = True
 
-        conversion_handler._last_progress_percent = 75
-        conversion_handler._last_progress_message = "Processing images..."
+        conversion_handler._pending_progress = (75, "Processing images...")
         conversion_handler._apply_throttled_progress()
 
         assert main_window.progress_bar.format() == "75% — Processing images..."

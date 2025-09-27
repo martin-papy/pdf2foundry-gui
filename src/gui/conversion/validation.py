@@ -134,7 +134,7 @@ class ConversionValidator:
                 return False, "Cannot determine disk space - no accessible parent directory"
 
             # Get disk usage
-            total, used, free = shutil.disk_usage(check_path)
+            _total, _used, free = shutil.disk_usage(check_path)
 
             # Convert to MB
             free_mb = free / (1024 * 1024)

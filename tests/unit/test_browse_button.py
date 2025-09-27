@@ -32,7 +32,7 @@ class TestBrowseButtonFunctionality:
         assert hasattr(window, "on_browse_clicked")
         assert callable(window.on_browse_clicked)
 
-    @patch("gui.main_window.QFileDialog.getOpenFileName")
+    @patch("gui.handlers.file_handler.QFileDialog.getOpenFileName")
     def test_browse_valid_pdf_selection(self, mock_dialog, qtbot, tmp_path):
         """Test Browse button with valid PDF selection."""
         window = MainWindow()
@@ -46,7 +46,7 @@ class TestBrowseButtonFunctionality:
         mock_dialog.return_value = (str(test_pdf), "PDF Files (*.pdf)")
 
         # Mock _apply_selected_file to verify it gets called
-        with patch.object(window, "_apply_selected_file") as mock_apply:
+        with patch.object(window.file_handler, "_apply_selected_file") as mock_apply:
             # Trigger browse button click
             window.on_browse_clicked()
 
@@ -60,7 +60,7 @@ class TestBrowseButtonFunctionality:
             # Verify _apply_selected_file was called with the selected path
             mock_apply.assert_called_once_with(str(test_pdf))
 
-    @patch("gui.main_window.QFileDialog.getOpenFileName")
+    @patch("gui.handlers.file_handler.QFileDialog.getOpenFileName")
     def test_browse_invalid_file_selection(self, mock_dialog, qtbot, tmp_path):
         """Test Browse button with invalid file selection."""
         window = MainWindow()
@@ -82,7 +82,7 @@ class TestBrowseButtonFunctionality:
         # Verify status shows error message
         assert "Selected file is not a valid PDF" in window.status_label.text()
 
-    @patch("gui.main_window.QFileDialog.getOpenFileName")
+    @patch("gui.handlers.file_handler.QFileDialog.getOpenFileName")
     def test_browse_dialog_cancellation(self, mock_dialog, qtbot):
         """Test Browse button when user cancels dialog."""
         window = MainWindow()
@@ -109,20 +109,20 @@ class TestBrowseButtonFunctionality:
 
         # Test that config manager methods exist and can be called
         # This test verifies the integration works
-        assert hasattr(window._config_manager, "get")
-        assert hasattr(window._config_manager, "set")
-        assert callable(window._config_manager.get)
-        assert callable(window._config_manager.set)
+        assert hasattr(window.config_manager, "get")
+        assert hasattr(window.config_manager, "set")
+        assert callable(window.config_manager.get)
+        assert callable(window.config_manager.set)
 
-    @patch("gui.main_window.QFileDialog.getOpenFileName")
-    @patch("gui.main_window.QStandardPaths.writableLocation")
+    @patch("gui.handlers.file_handler.QFileDialog.getOpenFileName")
+    @patch("gui.handlers.file_handler.QStandardPaths.writableLocation")
     def test_directory_fallback(self, mock_standard_paths, mock_dialog, qtbot):
         """Test fallback to Documents directory when no last directory."""
         window = MainWindow()
         qtbot.addWidget(window)
 
         # Mock config manager to return empty string (no last directory)
-        with patch.object(window._config_manager, "get", return_value=""):
+        with patch.object(window.config_manager, "get", return_value=""):
             # Mock Documents directory
             mock_standard_paths.return_value = "/Users/test/Documents"
 

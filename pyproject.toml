@@ -3,19 +3,21 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pyside6-app"
+name = "pdf2foundry-gui"
 version = "0.1.0a1"
-description = "PySide6 GUI application"
+description = "PDF2Foundry GUI application"
 readme = "README.md"
 requires-python = ">=3.12"
-authors = [{ name = "Your Name", email = "you@example.com" }]
-license = { text = "MIT" }
+authors = [{ name = "Martin Papy", email = "martin.papy@gmail.com" }]
 dependencies = [
   "PySide6==6.9.2",
   "PySide6-stubs>=6.7.0",
   "pdf2foundry==0.1.0a1",
   "jsonschema>=4.0.0",
 ]
+
+[project.license]
+file = "LICENSE"
 
 # Keep PyInstaller as a build extra (not required at runtime)
 [project.optional-dependencies]
@@ -35,7 +37,7 @@ dev = [
 ]
 
 [project.scripts]
-pyside6-app = "gui.main:main"
+pdf2foundry-gui = "gui.main:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -67,15 +69,6 @@ source = ["src"]
 omit = [
     "tests/*",
     "*/test_*",
-    "src/gui/utils/*",  # Utility modules - will be tested when used
-    "src/gui/dialogs/*",  # GUI dialogs - not yet fully tested
-    "src/gui/widgets/*",  # GUI widgets - not yet fully tested
-    "src/gui/main.py",  # Main entry point - not tested
-    "src/gui/main_window.py",  # Main window - not yet fully tested
-    "src/gui/conversion_handler.py",  # Conversion handler - not yet fully tested
-    "src/core/config.py",  # Config module - not yet used
-    "src/core/config_manager.py",  # Config manager - not yet used
-    "src/core/preset_manager.py",  # Preset manager - not yet implemented
 ]
 
 [tool.coverage.report]

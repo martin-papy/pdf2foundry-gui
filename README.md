@@ -38,7 +38,7 @@ pdf2foundry-gui/
    ```bash
    python run.py
    # or after installation:
-   pyside6-app
+   pdf2foundry-gui
    ```
 
 ## Import Paths
@@ -52,10 +52,10 @@ For local development without installation, ensure `src/` is in your Python path
 
 ## Requirements
 
-- Python 3.10+
-- PySide6 6.6.0
-- PyInstaller 6.3.0 (for packaging)
+- Python 3.12+
+- PySide6 6.9.2
+- PyInstaller 6.16.0 (for packaging)
 
 ## License
 
-[License information to be added]
+This project is licensed under the GNU GPLv3 - see the [LICENSE](LICENSE) file for details.

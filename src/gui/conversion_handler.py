@@ -153,11 +153,16 @@ class ConversionHandler(QObject):
         self._conversion_started = True
         self._set_status_state(StatusState.RUNNING)
 
+        # Clear and initialize log console
+        if hasattr(self._main_window, "log_console") and self._main_window.log_console:
+            self._main_window.log_console.clear()
+            self._main_window.log_console.append_log("INFO", "Starting conversion...")
+
         # Update progress bar
         if hasattr(self._main_window, "progress_bar"):
             self._main_window.progress_bar.setVisible(True)
             self._main_window.progress_bar.setValue(0)
-            self._main_window.progress_bar.setFormat("Starting conversion...")
+            self._main_window.progress_bar.setFormat("%p%")  # Reset to default format
 
         if hasattr(self._main_window, "progress_status"):
             self._main_window.progress_status.setVisible(True)
@@ -177,6 +182,11 @@ class ConversionHandler(QObject):
             percent: Progress percentage (0-100)
             message: Progress message
         """
+        # If this is the first progress update, set status to RUNNING
+        if not self._conversion_started:
+            self._conversion_started = True
+            self._set_status_state(StatusState.RUNNING)
+
         # Clamp percentage to valid range
         percent = max(0, min(100, percent))
 
@@ -195,11 +205,32 @@ class ConversionHandler(QObject):
         percent, message = self._pending_progress
         self._pending_progress = None
 
-        # Update progress bar
-        if hasattr(self._main_window, "progress_bar"):
-            self._main_window.progress_bar.setValue(percent)
-            if message:
-                self._main_window.progress_bar.setFormat(f"{percent}% - {message}")
+        # Handle negative values or indeterminate keywords (indeterminate mode)
+        indeterminate_keywords = ["preparing", "loading", "initializing"]
+        is_indeterminate = percent < 0 or any(keyword in message.lower() for keyword in indeterminate_keywords)
+
+        if is_indeterminate:
+            if hasattr(self._main_window, "progress_bar"):
+                self._main_window.progress_bar.setMinimum(0)
+                self._main_window.progress_bar.setMaximum(0)
+                self._main_window.progress_bar.setValue(0)
+                if message:
+                    self._main_window.progress_bar.setFormat(message)
+        else:
+            # Clamp percentage to valid range
+            percent = max(0, min(100, percent))
+
+            # Update progress bar
+            if hasattr(self._main_window, "progress_bar"):
+                # Reset to normal mode if it was in indeterminate mode
+                if self._main_window.progress_bar.maximum() == 0:
+                    self._main_window.progress_bar.setMinimum(0)
+                    self._main_window.progress_bar.setMaximum(100)
+
+                self._main_window.progress_bar.setValue(percent)
+                if message:
+                    self._main_window.progress_bar.setFormat(f"{percent}% — {message}")
+                    self._main_window.progress_bar.setToolTip(message)
 
         # Update status label
         if hasattr(self._main_window, "progress_status"):
@@ -217,7 +248,7 @@ class ConversionHandler(QObject):
         # Update progress to 100%
         if hasattr(self._main_window, "progress_bar"):
             self._main_window.progress_bar.setValue(100)
-            self._main_window.progress_bar.setFormat("100% - Completed")
+            self._main_window.progress_bar.setFormat("100% — Completed")
 
         if hasattr(self._main_window, "progress_status"):
             self._main_window.progress_status.setText("Conversion completed successfully")
@@ -269,8 +300,14 @@ class ConversionHandler(QObject):
         """Handle conversion cancellation."""
         self._logger.info(f"[{self._conversion_id or 'unknown'}] Conversion cancelled by user")
 
-        # Update progress bar
-        self.ui_manager._reset_progress_after_cancel()
+        # Set progress bar format to "Canceled" immediately
+        if hasattr(self._main_window, "progress_bar"):
+            self._main_window.progress_bar.setFormat("Canceled")
+
+        # Schedule progress reset after a delay
+        from PySide6.QtCore import QTimer
+
+        QTimer.singleShot(1000, self._reset_progress_after_cancel)
 
         if hasattr(self._main_window, "progress_status"):
             self._main_window.progress_status.setText("Conversion canceled")
@@ -294,6 +331,12 @@ class ConversionHandler(QObject):
         """Show an error message to the user."""
         QMessageBox.critical(self._main_window, title, message)
         self._logger.error(f"{title}: {message}")
+
+    def _reset_progress_after_cancel(self) -> None:
+        """Reset progress bar after cancellation delay."""
+        if hasattr(self._main_window, "progress_bar"):
+            self._main_window.progress_bar.setValue(0)
+            self._main_window.progress_bar.setFormat("%p%")
 
     def cleanup(self) -> None:
         """Clean up resources."""

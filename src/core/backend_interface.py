@@ -18,6 +18,7 @@ from pathlib import Path
 from pdf2foundry.cli.conversion import run_conversion_pipeline
 
 from .conversion_config import ConversionConfig
+from .errors import BackendError, CancellationError
 from .validation import validate_and_normalize
 
 # Type aliases for callbacks
@@ -79,25 +80,8 @@ class CancellationToken:
             raise CancellationError("Operation was cancelled")
 
 
-class CancellationError(Exception):
-    """Exception raised when an operation is cancelled."""
-
-    pass
-
-
-class BackendError(Exception):
-    """Base exception for backend-related errors."""
-
-    def __init__(self, message: str, original_error: Exception | None = None):
-        """
-        Initialize the backend error.
-
-        Args:
-            message: User-friendly error message
-            original_error: Original exception that caused this error
-        """
-        super().__init__(message)
-        self.original_error = original_error
+# Legacy aliases for backward compatibility - these are now deprecated
+# Use the new error classes from .errors module instead
 
 
 class BackendInterface:

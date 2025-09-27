@@ -10,6 +10,7 @@ from enum import Enum
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
+from core.conversion_state import ConversionState
 from gui.utils.styling import AccessiblePalette, get_status_indicator_color
 
 
@@ -67,12 +68,13 @@ class StatusIndicatorWidget(QWidget):
         # Set initial state
         self.set_status(StatusState.IDLE)
 
-    def set_status(self, state: StatusState) -> None:
+    def set_status(self, state: StatusState, custom_text: str | None = None) -> None:
         """
         Set the current status state.
 
         Args:
             state: The new status state
+            custom_text: Optional custom text to display instead of default
         """
         self._current_state = state
 
@@ -88,12 +90,32 @@ class StatusIndicatorWidget(QWidget):
         )
 
         # Update text and accessibility
-        self.status_text.setText(state.display_name)
+        display_text = custom_text if custom_text else state.display_name
+        self.status_text.setText(display_text)
 
         # Update accessible descriptions for screen readers
-        self.status_dot.setAccessibleDescription(f"Status: {state.display_name}")
+        self.status_dot.setAccessibleDescription(f"Status: {display_text}")
         self.status_text.setAccessibleDescription(state.description)
-        self.setToolTip(f"{state.display_name}: {state.description}")
+        self.setToolTip(f"{display_text}: {state.description}")
+
+    def set_conversion_state(self, conv_state: ConversionState, custom_text: str | None = None) -> None:
+        """
+        Set status based on ConversionState.
+
+        Args:
+            conv_state: The conversion state
+            custom_text: Optional custom text to display
+        """
+        # Map ConversionState to StatusState
+        state_mapping = {
+            ConversionState.IDLE: StatusState.IDLE,
+            ConversionState.RUNNING: StatusState.RUNNING,
+            ConversionState.COMPLETED: StatusState.COMPLETED,
+            ConversionState.ERROR: StatusState.ERROR,
+        }
+
+        status_state = state_mapping.get(conv_state, StatusState.IDLE)
+        self.set_status(status_state, custom_text)
 
     def get_status(self) -> StatusState:
         """Get the current status state."""
@@ -117,17 +139,31 @@ class StatusManager:
         self._status_widget = status_widget
         self._settings = QSettings()
 
-    def set_status(self, state: StatusState) -> None:
+    def set_status(self, state: StatusState, custom_text: str | None = None) -> None:
         """
         Set the current status state.
 
         Args:
             state: The new status state
+            custom_text: Optional custom text to display
         """
-        self._status_widget.set_status(state)
+        self._status_widget.set_status(state, custom_text)
 
         # Optionally persist the status (for debugging/recovery)
         self._settings.setValue("ui/lastStatus", state.name)
+
+    def set_conversion_state(self, conv_state: ConversionState, custom_text: str | None = None) -> None:
+        """
+        Set status based on ConversionState.
+
+        Args:
+            conv_state: The conversion state
+            custom_text: Optional custom text to display
+        """
+        self._status_widget.set_conversion_state(conv_state, custom_text)
+
+        # Persist conversion state
+        self._settings.setValue("ui/lastConversionState", conv_state.name)
 
     def get_status(self) -> StatusState:
         """Get the current status state."""

@@ -1,19 +1,22 @@
 """
-Conversion handling functionality for the PDF2Foundry GUI.
+Conversion handling for the PDF2Foundry GUI.
 
-This module contains the ConversionHandler class which manages
-all conversion-related operations and UI updates.
+This module manages the conversion workflow, including validation,
+starting/stopping conversions, and updating the UI based on conversion events.
 """
 
 import logging
+import uuid
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QObject, QTimer, Slot
+from PySide6.QtCore import QObject, QTimer
 from PySide6.QtWidgets import QMessageBox
 
-from core.gui_mapping import GuiMappingError
+from core.conversion_state import ConversionState
+from core.gui_mapping import GuiConfigMapper, GuiMappingError
 from core.threading import ConversionController
-from gui.utils.styling import apply_status_style
+from gui.conversion.ui_manager import ConversionUIManager
+from gui.conversion.validation import ConversionValidator
 from gui.widgets.status_indicator import StatusState
 
 if TYPE_CHECKING:
@@ -22,31 +25,42 @@ if TYPE_CHECKING:
 
 class ConversionHandler(QObject):
     """
-    Handles all conversion-related operations and UI updates.
+    Handles PDF conversion operations and UI updates.
 
     This class manages the conversion workflow, including validation,
-    starting/stopping conversions, and updating the UI based on
-    conversion events.
+    starting/stopping conversions, and updating the UI based on conversion events.
     """
 
     def __init__(self, main_window: "MainWindow") -> None:
-        super().__init__(parent=main_window)
+        """Initialize the conversion handler."""
+        super().__init__()
         self._main_window = main_window
         self._logger = logging.getLogger(__name__)
 
-        # Create conversion controller
-        self._conversion_controller = ConversionController(parent=self)
+        # Initialize components
+        self.validator = ConversionValidator(main_window)
+        self.ui_manager = ConversionUIManager(main_window)
 
-        # Progress throttling state
-        self._progress_throttle_ms = 100  # 100ms throttle for smooth updates
-        self._progress_timer = QTimer(self)
-        self._progress_timer.setSingleShot(True)
-        self._progress_timer.timeout.connect(self._apply_throttled_progress)
-        self._last_progress_percent = 0
-        self._last_progress_message = ""
+        # Conversion state tracking
+        self._current_job_id: str | None = None
+        self._conversion_id: str | None = None
+        self._in_progress = False
+        self._cancel_requested = False
+        self._result_notified = False
         self._conversion_started = False
 
-        # Connect controller signals with queued connections for thread safety
+        # Progress throttling
+        self._progress_throttle_timer = QTimer()
+        self._progress_throttle_timer.setSingleShot(True)
+        self._progress_throttle_timer.timeout.connect(self._apply_throttled_progress)
+        self._pending_progress: tuple[int, str] | None = None
+
+        # Initialize conversion controller
+        self._conversion_controller = ConversionController()
+        self._connect_controller_signals()
+
+    def _connect_controller_signals(self) -> None:
+        """Connect conversion controller signals."""
         self._conversion_controller.conversionStarted.connect(self._on_conversion_started)
         self._conversion_controller.conversionFinished.connect(self._on_conversion_finished)
         self._conversion_controller.progressChanged.connect(self.on_progress_changed)
@@ -61,217 +75,230 @@ class ConversionHandler(QObject):
         return self._conversion_controller
 
     def _set_status_state(self, state: StatusState) -> None:
-        """Update the main window status indicator."""
-        self._main_window._set_status(state)
+        """Set the status indicator state."""
+        self._main_window.ui_state_handler._set_status(state)
 
     def validate_inputs(self) -> None:
-        """Validate inputs and enable/disable convert button."""
-        has_file = self._main_window.selected_file_path is not None
-        has_mod_id = bool(self._main_window.module_id_input.text().strip())
-        has_mod_title = bool(self._main_window.module_title_input.text().strip())
-        is_not_converting = not self._conversion_controller.is_running()
-
-        self._main_window.convert_button.setEnabled(has_file and has_mod_id and has_mod_title and is_not_converting)
+        """Validate conversion inputs and update UI accordingly."""
+        # This method can be expanded if needed
+        pass
 
     def start_conversion(self) -> None:
-        """Handle convert button click."""
-        if self._conversion_controller.is_running():
-            return
+        """Start the PDF conversion process."""
+        # Generate unique conversion ID for this attempt
+        self._conversion_id = str(uuid.uuid4())[:8]
+        self._result_notified = False
 
         try:
-            # Build GUI state
+            # Perform pre-flight checks
+            checks_passed, error_message = self.validator._perform_preflight_checks()
+            if not checks_passed:
+                self._show_error("Cannot Start Conversion", error_message)
+                return
+
+            # Set conversion flags
+            self._in_progress = True
+            self._cancel_requested = False
+
+            # Update UI state
+            self._main_window.set_conversion_state(ConversionState.RUNNING)
+
+            # Build conversion configuration
+            gui_mapper = GuiConfigMapper()
+
+            # Create GUI state dictionary
             gui_state = {
-                "pdf_path": self._main_window.selected_file_path,
-                "mod_id": self._main_window.module_id_input.text().strip(),
-                "mod_title": self._main_window.module_title_input.text().strip(),
+                "pdf_file": self._main_window.file_handler.get_selected_pdf_path() or "",
+                "mod_id": (self._main_window.ui.module_id_input.text() if self._main_window.ui.module_id_input else ""),
+                "mod_title": (
+                    self._main_window.ui.module_title_input.text() if self._main_window.ui.module_title_input else ""
+                ),
+                "output_dir": (
+                    self._main_window.ui.output_dir_selector.path() if self._main_window.ui.output_dir_selector else ""
+                ),
             }
 
-            # Convert to ConversionConfig
-            config = self._main_window._gui_mapper.build_config_from_gui(gui_state)
+            config = gui_mapper.build_config_from_gui(gui_state)
 
-            # Start conversion
+            # Generate job ID
+            self._current_job_id = f"{config.mod_id}-{self._conversion_id}"
+
+            # Start the conversion
             self._conversion_controller.start_conversion(config)
 
         except GuiMappingError as e:
-            self._show_error("Configuration Error", str(e))
+            self.ui_manager._finalize_conversion("error", {"error_type": "Configuration Error", "message": str(e)})
         except Exception as e:
-            self._show_error("Unexpected Error", f"Failed to start conversion: {e}")
+            self._logger.error(f"[{self._conversion_id}] Unexpected error starting conversion: {e}")
+            self.ui_manager._finalize_conversion("error", {"error_type": "Startup Error", "message": str(e)})
 
     def cancel_conversion(self) -> None:
-        """Handle cancel button click."""
-        self._conversion_controller.cancel_conversion()
-        self._main_window.log_console.append_log("INFO", "Cancellation requested...")
+        """Cancel the current conversion."""
+        self._cancel_requested = True
 
-    @Slot()
+        # Disable cancel button to prevent multiple clicks
+        if self._main_window.ui.cancel_button:
+            self._main_window.ui.cancel_button.setEnabled(False)
+
+        # If conversion hasn't started yet, finalize immediately
+        if not self._conversion_controller.is_running():
+            self.ui_manager._finalize_conversion("cancelled")
+            return
+
+        # Request cancellation from controller
+        self._conversion_controller.cancel_conversion()
+
     def _on_conversion_started(self) -> None:
         """Handle conversion started signal."""
-        self._set_conversion_state(True)
-        self._main_window.log_console.clear()
-        self._main_window.log_console.append_log("INFO", "Starting conversion...")
+        self._conversion_started = True
+        self._set_status_state(StatusState.RUNNING)
 
-        # Reset progress state
-        self._conversion_started = False
-        self._last_progress_percent = 0
-        self._last_progress_message = ""
-        self._progress_timer.stop()
+        # Update progress bar
+        if hasattr(self._main_window, "progress_bar"):
+            self._main_window.progress_bar.setVisible(True)
+            self._main_window.progress_bar.setValue(0)
+            self._main_window.progress_bar.setFormat("Starting conversion...")
 
-        # Initialize progress bar
-        self._main_window.progress_bar.setRange(0, 100)
-        self._main_window.progress_bar.setValue(0)
-        self._main_window.progress_bar.setFormat("%p%")
+        if hasattr(self._main_window, "progress_status"):
+            self._main_window.progress_status.setVisible(True)
+            self._main_window.progress_status.setText("Initializing...")
 
-    @Slot()
     def _on_conversion_finished(self) -> None:
         """Handle conversion finished signal."""
-        self._set_conversion_state(False)
+        # This is called for all completion types (success, error, cancel)
+        # The specific handlers will be called separately
+        pass
 
-    @Slot(int, str)
     def on_progress_changed(self, percent: int, message: str) -> None:
-        """Handle progress updates from worker with throttling."""
-        # Set status to Running on first progress update
-        if not self._conversion_started:
-            self._set_status_state(StatusState.RUNNING)
-            self._conversion_started = True
+        """
+        Handle progress update from conversion.
 
-        # Store latest progress values
-        self._last_progress_percent = percent
-        self._last_progress_message = message
+        Args:
+            percent: Progress percentage (0-100)
+            message: Progress message
+        """
+        # Clamp percentage to valid range
+        percent = max(0, min(100, percent))
 
-        # Start/restart throttle timer
-        self._progress_timer.stop()
-        self._progress_timer.start(self._progress_throttle_ms)
+        # Store pending progress for throttling
+        self._pending_progress = (percent, message)
+
+        # Start or restart throttle timer (16ms = ~60fps)
+        if not self._progress_throttle_timer.isActive():
+            self._progress_throttle_timer.start(16)
 
     def _apply_throttled_progress(self) -> None:
-        """Apply the latest throttled progress update to UI."""
-        percent = self._last_progress_percent
-        message = self._last_progress_message
+        """Apply the most recent progress update."""
+        if not self._pending_progress:
+            return
 
-        # Handle indeterminate progress for unknown phases
-        if percent < 0 or any(keyword in message.lower() for keyword in ["preparing", "loading", "initializing"]):
-            # Set indeterminate mode
-            self._main_window.progress_bar.setRange(0, 0)
-        else:
-            # Set determinate mode with clamped value
-            self._main_window.progress_bar.setRange(0, 100)
-            clamped_percent = max(0, min(100, percent))
-            self._main_window.progress_bar.setValue(clamped_percent)
+        percent, message = self._pending_progress
+        self._pending_progress = None
 
-            # Update format with message if provided
+        # Update progress bar
+        if hasattr(self._main_window, "progress_bar"):
+            self._main_window.progress_bar.setValue(percent)
             if message:
-                self._main_window.progress_bar.setFormat(f"{clamped_percent}% — {message}")
-                self._main_window.progress_bar.setToolTip(message)
-            else:
-                self._main_window.progress_bar.setFormat("%p%")
-                self._main_window.progress_bar.setToolTip("")
+                self._main_window.progress_bar.setFormat(f"{percent}% - {message}")
 
-        # Update secondary status label
-        if message:
-            self._main_window.progress_status.setText(message)
+        # Update status label
+        if hasattr(self._main_window, "progress_status"):
+            self._main_window.progress_status.setText(message or f"{percent}%")
 
-    @Slot(str, str)
     def on_log_message(self, level: str, message: str) -> None:
-        """Handle log messages from worker."""
-        self._main_window.log_console.append_log(level, message)
+        """Handle log message from conversion."""
+        if hasattr(self._main_window, "log_console"):
+            self._main_window.log_console.append_log(level, message)
 
-    @Slot(dict)
     def on_conversion_completed(self, result: dict) -> None:
         """Handle successful conversion completion."""
-        # Stop progress throttling and set final state
-        self._progress_timer.stop()
+        self._logger.info(f"[{self._conversion_id or 'unknown'}] Conversion completed successfully")
 
+        # Update progress to 100%
+        if hasattr(self._main_window, "progress_bar"):
+            self._main_window.progress_bar.setValue(100)
+            self._main_window.progress_bar.setFormat("100% - Completed")
+
+        if hasattr(self._main_window, "progress_status"):
+            self._main_window.progress_status.setText("Conversion completed successfully")
+
+        # Set status to completed
         self._set_status_state(StatusState.COMPLETED)
 
-        # Set progress to 100% completion
-        self._main_window.progress_bar.setRange(0, 100)
-        self._main_window.progress_bar.setValue(100)
-        self._main_window.progress_bar.setFormat("100% — Completed")
+        # Send notification
+        if hasattr(self._main_window, "notification_manager") and not self._result_notified:
+            output_path = result.get("output_path")
+            pages = result.get("pages_processed", "unknown")
+            module_title = result.get("module_title", "PDF")
 
-        output_dir = result.get("output_dir", "")
-        mod_title = result.get("mod_title", "Module")
+            self._main_window.notification_manager.notify(
+                status="success",
+                title="Conversion Completed",
+                message=f"Successfully converted {pages} pages of '{module_title}'",
+                output_path=output_path,
+                job_id=self._current_job_id,
+            )
 
-        self._main_window.status_label.setText(f"Conversion completed: {mod_title}")
-        apply_status_style(self._main_window.status_label, "success")
+        # Finalize conversion
+        self.ui_manager._finalize_conversion("success", result)
 
-        self._main_window.log_console.append_log("INFO", "✓ Conversion completed successfully!")
-        self._main_window.log_console.append_log("INFO", f"Output directory: {output_dir}")
-
-    @Slot(str, str)
     def on_conversion_error(self, error_type: str, traceback_str: str) -> None:
-        """Handle conversion errors."""
-        # Stop progress throttling and set error state
-        self._progress_timer.stop()
+        """Handle conversion error."""
+        self._logger.error(f"[{self._conversion_id or 'unknown'}] Conversion failed: {error_type}")
 
+        # Update progress bar with error
+        if hasattr(self._main_window, "progress_bar"):
+            self._main_window.progress_bar.setFormat(f"Error — {error_type}")
+
+        if hasattr(self._main_window, "progress_status"):
+            self._main_window.progress_status.setText(f"Error: {error_type}")
+
+        # Set status to error
         self._set_status_state(StatusState.ERROR)
 
-        # Keep current progress value (don't jump to 100%)
-        self._main_window.progress_bar.setFormat(f"Error — {error_type}")
+        # Send notification
+        if hasattr(self._main_window, "notification_manager") and not self._result_notified:
+            self._main_window.notification_manager.notify(
+                status="error", title="Conversion Failed", message=f"Error: {error_type}", job_id=self._current_job_id
+            )
 
-        self._main_window.status_label.setText(f"Conversion failed: {error_type}")
-        apply_status_style(self._main_window.status_label, "error")
+        # Finalize conversion
+        self.ui_manager._finalize_conversion("error", {"error_type": error_type, "traceback": traceback_str})
 
-        self._main_window.log_console.append_log("ERROR", f"✗ Conversion failed: {error_type}")
-        self._main_window.log_console.append_log("ERROR", f"Error details: {traceback_str}")
-
-    @Slot()
     def on_conversion_canceled(self) -> None:
         """Handle conversion cancellation."""
-        # Stop progress throttling and set canceled state
-        self._progress_timer.stop()
+        self._logger.info(f"[{self._conversion_id or 'unknown'}] Conversion cancelled by user")
 
-        self._set_status_state(StatusState.IDLE)  # Return to idle after cancellation
+        # Update progress bar
+        self.ui_manager._reset_progress_after_cancel()
 
-        # Reset progress after brief delay to show cancellation
-        QTimer.singleShot(1000, lambda: self._reset_progress_after_cancel())
-        self._main_window.progress_bar.setFormat("Canceled")
+        if hasattr(self._main_window, "progress_status"):
+            self._main_window.progress_status.setText("Conversion canceled")
 
-        self._main_window.status_label.setText("Conversion canceled")
-        apply_status_style(self._main_window.status_label, "warning")
+        # Set status to idle
+        self._set_status_state(StatusState.IDLE)
 
-        self._main_window.log_console.append_log("WARNING", "⚠ Conversion canceled by user")
+        # Send notification
+        if hasattr(self._main_window, "notification_manager") and not self._result_notified:
+            self._main_window.notification_manager.notify(
+                status="warning",
+                title="Conversion Canceled",
+                message="The conversion was canceled by the user",
+                job_id=self._current_job_id,
+            )
 
-    def _reset_progress_after_cancel(self) -> None:
-        """Reset progress bar after cancellation delay."""
-        self._main_window.progress_bar.setRange(0, 100)
-        self._main_window.progress_bar.setValue(0)
-        self._main_window.progress_bar.setFormat("%p%")
-
-    def _set_conversion_state(self, is_converting: bool) -> None:
-        """Update UI state based on conversion status."""
-        # Update button states
-        cancel_button = self._main_window.cancel_button
-        if hasattr(cancel_button, "setEnabled"):
-            cancel_button.setEnabled(is_converting)
-        self.validate_inputs()  # This will update convert button state
-
-        # Update progress visibility
-        self._main_window.progress_bar.setVisible(is_converting)
-        self._main_window.progress_status.setVisible(is_converting)
-
-        if is_converting:
-            self._main_window.progress_bar.setValue(0)
-            self._main_window.progress_status.setText("Initializing...")
-        else:
-            # Reset to idle state when not converting (unless already in terminal state)
-            if not self._conversion_started:  # Only reset if we haven't started yet
-                self._set_status_state(StatusState.IDLE)
-
-            self._main_window.progress_bar.setValue(0)
-            self._main_window.progress_status.setText("")
+        # Finalize conversion
+        self.ui_manager._finalize_conversion("cancelled")
 
     def _show_error(self, title: str, message: str) -> None:
         """Show an error message to the user."""
-        msg_box = QMessageBox(self._main_window)
-        msg_box.setIcon(QMessageBox.Icon.Critical)
-        msg_box.setWindowTitle(title)
-        msg_box.setText(message)
-        msg_box.exec()
+        QMessageBox.critical(self._main_window, title, message)
+        self._logger.error(f"{title}: {message}")
 
     def cleanup(self) -> None:
-        """Clean up resources when the handler is being destroyed."""
-        self.shutdown()
+        """Clean up resources."""
+        self._conversion_controller.shutdown()
 
     def shutdown(self, timeout_ms: int = 2000) -> None:
-        """Handle application shutdown gracefully."""
-        if self._conversion_controller.is_running():
-            self._logger.info("Application closing with active conversion, requesting shutdown...")
-            self._conversion_controller.shutdown(timeout_ms=timeout_ms)
+        """Shutdown the conversion handler."""
+        self._conversion_controller.shutdown(timeout_ms)
